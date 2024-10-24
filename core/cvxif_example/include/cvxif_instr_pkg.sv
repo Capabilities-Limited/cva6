@@ -11,9 +11,10 @@
 
 package cvxif_instr_pkg;
 
-  typedef enum logic {
-    BCDfromBIN = 1'b0,
-    BCDADD = 1'b1
+  typedef enum logic [3:0] {
+    ILLEGAL = 4'b0000,
+    BCDfromBIN = 4'b0001,
+    BCDADD = 4'b0010
   } opcode_t;
 
   typedef struct packed {

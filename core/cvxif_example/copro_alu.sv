@@ -82,7 +82,7 @@ module copro_alu
         id_n     = id_i;
         valid_n  = 1'b1;
         rd_n     = rd_i;
-        we_n     = '1;
+        we_n     = 1'b1;
       end
       cvxif_instr_pkg::BCDADD: begin
         result_n = BCDADD(registers_i[0], registers_i[1]);
