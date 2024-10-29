@@ -89,6 +89,8 @@ wait_on_run synth_1
 open_run synth_1
 
 exec mkdir -p reports/
+# work around to fix bug in Xilinx Windows versin of rm:
+exec touch reports/tmp
 exec rm -rf reports/*
 
 check_timing -verbose                                                   -file reports/$project.check_timing.rpt
@@ -115,6 +117,8 @@ write_sdf     -force work-fpga/${project}_timesim.sdf
 
 # reports
 exec mkdir -p reports/
+# work around to fix bug in Xilinx Windows versin of rm:
+exec touch reports/tmp
 exec rm -rf reports/*
 check_timing                                                              -file reports/${project}.check_timing.rpt
 report_timing -max_paths 100 -nworst 100 -delay_type max -sort_by slack   -file reports/${project}.timing_WORST_100.rpt
