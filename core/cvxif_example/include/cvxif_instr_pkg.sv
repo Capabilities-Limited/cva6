@@ -49,7 +49,7 @@ package cvxif_instr_pkg;
           instr:32'b0000000_00000_00000_000_00000_0101011, // custom1 opcode
           mask: 32'b1111111_00000_00000_111_00000_1111111,
           resp : '{accept : 1'b1, writeback : 1'b1,     // This instruction will write a register
-                   register_read : {1'b1, 1'b0, 1'b0}}, // Use rs1 for input
+                   register_read : {1'b0, 1'b0, 1'b1}}, // Use rs1 for input
           opcode : BCDfromBIN
       },
       '{
@@ -57,7 +57,7 @@ package cvxif_instr_pkg;
           instr:32'b0000000_00000_00000_001_00000_0101011, // custom1 opcode
           mask: 32'b1111111_00000_00000_111_00000_1111111,
           resp : '{accept : 1'b1, writeback : 1'b1,     // This instruction will write a register
-                   register_read : {1'b1, 1'b1, 1'b0}}, // Use rs1 and rs2 for input
+                   register_read : {1'b0, 1'b1, 1'b1}}, // Use rs1 and rs2 for input
           opcode : BCDADD
       }
   };
