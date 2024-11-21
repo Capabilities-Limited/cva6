@@ -6,6 +6,15 @@ xlnx_axi_dwidth_converter:
     si_id_width: 5
     mi_data_width: 32
 
+xlnx_axi_lite_converter:
+  ip: axi_protocol_converter
+  vendor: xilinx.com
+  config:
+    si_protocol: AXI4
+    mi_protocol: AXI4LITE
+    translation_mode: 2 # Convert
+    id_width: 0
+
 xlnx_axi_clock_converter:
   ip: axi_clock_converter
   vendor: xilinx.com
@@ -33,6 +42,24 @@ xlnx_axi_quad_spi:
     c_fifo_depth: 256
     c_type_of_axi4_interface: 1
     c_s_axi4_id_width: 0
+
+xlnx_axi_ethernet:
+  ip: axi_ethernet
+  vendor: xilinx.com
+  config:
+    phy_type: RGMII
+
+xlnx_axi_fifo:
+  ip: axi_fifo_mm_s
+  vendor: xilinx.com
+  config:
+    c_has_axis_tkeep: {true}
+    c_rx_fifo_depth: {4096}
+    c_rx_fifo_pe_threshold: {10}
+    c_rx_fifo_pf_threshold: {4000}
+    c_tx_fifo_depth: {4096}
+    c_tx_fifo_pe_threshold: {10}
+    c_tx_fifo_pf_threshold: {4000}
 
 xlnx_clk_gen:
   ip: clk_wiz

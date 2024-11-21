@@ -331,7 +331,8 @@ assign addr_map = '{
   '{ idx: ariane_soc::UART,     start_addr: ariane_soc::UARTBase,     end_addr: ariane_soc::UARTBase + ariane_soc::UARTLength         },
   '{ idx: ariane_soc::Timer,    start_addr: ariane_soc::TimerBase,    end_addr: ariane_soc::TimerBase + ariane_soc::TimerLength       },
   '{ idx: ariane_soc::SPI,      start_addr: ariane_soc::SPIBase,      end_addr: ariane_soc::SPIBase + ariane_soc::SPILength           },
-  '{ idx: ariane_soc::Ethernet, start_addr: ariane_soc::EthernetBase, end_addr: ariane_soc::EthernetBase + ariane_soc::EthernetLength },
+  '{ idx: ariane_soc::EthernetFIFO, start_addr: ariane_soc::EthernetFIFO, end_addr: ariane_soc::EthernetFIFOBase + ariane_soc::EthernetFIFOLength },
+  '{ idx: ariane_soc::EthernetMAC,  start_addr: ariane_soc::EthernetMAC , end_addr: ariane_soc::EthernetMACBase  + ariane_soc::EthernetMACLength  },
   '{ idx: ariane_soc::GPIO,     start_addr: ariane_soc::GPIOBase,     end_addr: ariane_soc::GPIOBase + ariane_soc::GPIOLength         },
   '{ idx: ariane_soc::DRAM,     start_addr: ariane_soc::DRAMBase,     end_addr: ariane_soc::DRAMBase + ariane_soc::DRAMLength         }
 };
@@ -868,19 +869,24 @@ ariane_peripherals #(
     .InclGPIO     ( 1'b1             ),
     `ifdef KINTEX7
     .InclSPI      ( 1'b1         ),
-    .InclEthernet ( 1'b1         )
+    .InclXilinxEthernet  ( 1'b1      ),
+    .InclLowriscEthernet ( 1'b0      )
     `elsif KC705
     .InclSPI      ( 1'b1         ),
-    .InclEthernet ( 1'b0         ) // Ethernet requires RAMB16 fpga/src/ariane-ethernet/dualmem_widen8.sv to be defined
+    .InclXilinxEthernet  ( 1'b0      ),
+    .InclLowriscEthernet ( 1'b0      ) // Ethernet requires RAMB16 fpga/src/ariane-ethernet/dualmem_widen8.sv to be defined
     `elsif VC707
     .InclSPI      ( 1'b1         ),
-    .InclEthernet ( 1'b0         )
+    .InclXilinxEthernet  ( 1'b0      ),
+    .InclLowriscEthernet ( 1'b0      )
     `elsif VCU118
     .InclSPI      ( 1'b0         ),
-    .InclEthernet ( 1'b0         )
+    .InclXilinxEthernet  ( 1'b0      ),
+    .InclLowriscEthernet ( 1'b0      )
     `elsif NEXYS_VIDEO
     .InclSPI      ( 1'b1         ),
-    .InclEthernet ( 1'b0         )
+    .InclXilinxEthernet  ( 1'b0      ),
+    .InclLowriscEthernet ( 1'b0      )
     `endif
 ) i_ariane_peripherals (
     .clk_i        ( clk                          ),
@@ -891,7 +897,8 @@ ariane_peripherals #(
     .spi          ( master[ariane_soc::SPI]      ),
     .gpio         ( master[ariane_soc::GPIO]     ),
     .eth_clk_i    ( eth_clk                      ),
-    .ethernet     ( master[ariane_soc::Ethernet] ),
+    .ethernet_mac ( master[ariane_soc::EthernetMAC] ),
+    .ethernet_fifo( master[ariane_soc::EthernetFIFO] ),
     .timer        ( master[ariane_soc::Timer]    ),
     .irq_o        ( irq                          ),
     .rx_i         ( rx                           ),

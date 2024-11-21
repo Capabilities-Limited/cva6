@@ -586,7 +586,8 @@ module ariane_testharness #(
     .InclUART     ( 1'b0                     ),
 `endif
     .InclSPI      ( 1'b0                     ),
-    .InclEthernet ( 1'b0                     )
+    .InclXilinxEthernet  ( 1'b0              ),
+    .InclLowriscEthernet ( 1'b0              )
   ) i_ariane_peripherals (
     .clk_i     ( clk_i                        ),
     .rst_ni    ( ndmreset_n                   ),

@@ -20,7 +20,8 @@ module ariane_peripherals #(
     parameter int AxiUserWidth = 1,
     parameter bit InclUART     = 1,
     parameter bit InclSPI      = 0,
-    parameter bit InclEthernet = 0,
+    parameter bit InclXilinxEthernet  = 0,
+    parameter bit InclLowriscEthernet = 0,
     parameter bit InclGPIO     = 0,
     parameter bit InclTimer    = 1
 ) (
@@ -31,7 +32,8 @@ module ariane_peripherals #(
     AXI_BUS.Slave      uart            ,
     AXI_BUS.Slave      spi             ,
     AXI_BUS.Slave      gpio            ,
-    AXI_BUS.Slave      ethernet        ,
+    AXI_BUS.Slave      ethernet_mac    ,
+    AXI_BUS.Slave      ethernet_fifo   ,
     AXI_BUS.Slave      timer           ,
     output logic [1:0] irq_o           ,
     // UART
@@ -67,7 +69,7 @@ module ariane_peripherals #(
     logic [ariane_soc::NumSources-1:0] irq_sources;
 
     // Unused interrupt sources
-    assign irq_sources[ariane_soc::NumSources-1:7] = '0;
+    assign irq_sources[ariane_soc::NumSources-1:8] = '0;
 
     REG_BUS #(
         .ADDR_WIDTH ( 32 ),
@@ -508,77 +510,27 @@ module ariane_peripherals #(
     // 4. Ethernet
     // ---------------
 
-    if (InclEthernet) begin : gen_ethernet
+    if (InclXilinxEthernet || InclLowriscEthernet) begin : gen_ethernet_common
+        // Code common to both Ethernet MACs.
 
-    logic                    clk_200_int, clk_rgmii, clk_rgmii_quad;
-    logic                    eth_en, eth_we, eth_int_n, eth_pme_n, eth_mdio_i, eth_mdio_o, eth_mdio_oe;
-    logic [AxiAddrWidth-1:0] eth_addr;
-    logic [AxiDataWidth-1:0] eth_wrdata, eth_rdata;
-    logic [AxiDataWidth/8-1:0] eth_be;
+        logic eth_mdio_i, eth_mdio_o, eth_mdio_oe;
 
-    axi2mem #(
-        .AXI_ID_WIDTH   ( AxiIdWidth       ),
-        .AXI_ADDR_WIDTH ( AxiAddrWidth     ),
-        .AXI_DATA_WIDTH ( AxiDataWidth     ),
-        .AXI_USER_WIDTH ( AxiUserWidth     )
-    ) i_axi2rom (
-        .clk_i  ( clk_i                   ),
-        .rst_ni ( rst_ni                  ),
-        .slave  ( ethernet                ),
-        .req_o  ( eth_en                  ),
-        .we_o   ( eth_we                  ),
-        .addr_o ( eth_addr                ),
-        .be_o   ( eth_be                  ),
-        .data_o ( eth_wrdata              ),
-        .data_i ( eth_rdata               )
-    );
-
-    framing_top eth_rgmii (
-       .msoc_clk(clk_i),
-       .core_lsu_addr(eth_addr[14:0]),
-       .core_lsu_wdata(eth_wrdata),
-       .core_lsu_be(eth_be),
-       .ce_d(eth_en),
-       .we_d(eth_en & eth_we),
-       .framing_sel(eth_en),
-       .framing_rdata(eth_rdata),
-       .rst_int(!rst_ni),
-       .clk_int(phy_tx_clk_i), // 125 MHz in-phase
-       .clk90_int(eth_clk_i),    // 125 MHz quadrature
-       .clk_200_int(clk_200MHz_i),
-       /*
-        * Ethernet: 1000BASE-T RGMII
-        */
-       .phy_rx_clk(eth_rxck),
-       .phy_rxd(eth_rxd),
-       .phy_rx_ctl(eth_rxctl),
-       .phy_tx_clk(eth_txck),
-       .phy_txd(eth_txd),
-       .phy_tx_ctl(eth_txctl),
-       .phy_reset_n(eth_rst_n),
-       .phy_int_n(eth_int_n),
-       .phy_pme_n(eth_pme_n),
-       .phy_mdc(eth_mdc),
-       .phy_mdio_i(eth_mdio_i),
-       .phy_mdio_o(eth_mdio_o),
-       .phy_mdio_oe(eth_mdio_oe),
-       .eth_irq(irq_sources[2])
-    );
-
-       IOBUF #(
-          .DRIVE(12), // Specify the output drive strength
-          .IBUF_LOW_PWR("TRUE"),  // Low Power - "TRUE", High Performance = "FALSE"
-          .IOSTANDARD("DEFAULT"), // Specify the I/O standard
-          .SLEW("SLOW") // Specify the output slew rate
-       ) IOBUF_inst (
-          .O(eth_mdio_i),     // Buffer output
-          .IO(eth_mdio),   // Buffer inout port (connect directly to top-level port)
-          .I(eth_mdio_o),     // Buffer input
-          .T(~eth_mdio_oe)      // 3-state enable input, high=input, low=output
-       );
+        IOBUF #(
+           .DRIVE(12), // Specify the output drive strength
+           .IBUF_LOW_PWR("TRUE"),  // Low Power - "TRUE", High Performance = "FALSE"
+           .IOSTANDARD("DEFAULT"), // Specify the I/O standard
+           .SLEW("SLOW") // Specify the output slew rate
+        ) IOBUF_inst (
+           .O(eth_mdio_i),     // Buffer output
+           .IO(eth_mdio),   // Buffer inout port (connect directly to top-level port)
+           .I(eth_mdio_o),     // Buffer input
+           .T(eth_mdio_oe)      // 3-state enable input, high=input, low=output
+        );
 
     end else begin
+        // Tie off signals with no ethernet
         assign irq_sources [2] = 1'b0;
+        assign irq_sources [7] = 1'b0;
         assign ethernet.aw_ready = 1'b1;
         assign ethernet.ar_ready = 1'b1;
         assign ethernet.w_ready = 1'b1;
@@ -592,6 +544,593 @@ module ariane_peripherals #(
         assign ethernet.r_resp = axi_pkg::RESP_SLVERR;
         assign ethernet.r_data = 'hdeadbeef;
         assign ethernet.r_last = 1'b1;
+    end
+
+    if (InclXilinxEthernet) begin : gen_axi_ethernet
+        // Convert the incoming ethernet FIFO master down to 32bits
+        logic [31:0] s_axi_ethernet_fifo_awaddr;
+        logic [7:0]  s_axi_ethernet_fifo_awlen;
+        logic [2:0]  s_axi_ethernet_fifo_awsize;
+        logic [1:0]  s_axi_ethernet_fifo_awburst;
+        logic [0:0]  s_axi_ethernet_fifo_awlock;
+        logic [3:0]  s_axi_ethernet_fifo_awcache;
+        logic [2:0]  s_axi_ethernet_fifo_awprot;
+        logic [3:0]  s_axi_ethernet_fifo_awregion;
+        logic [3:0]  s_axi_ethernet_fifo_awqos;
+        logic        s_axi_ethernet_fifo_awvalid;
+        logic        s_axi_ethernet_fifo_awready;
+        logic [31:0] s_axi_ethernet_fifo_wdata;
+        logic [3:0]  s_axi_ethernet_fifo_wstrb;
+        logic        s_axi_ethernet_fifo_wlast;
+        logic        s_axi_ethernet_fifo_wvalid;
+        logic        s_axi_ethernet_fifo_wready;
+        logic [1:0]  s_axi_ethernet_fifo_bresp;
+        logic        s_axi_ethernet_fifo_bvalid;
+        logic        s_axi_ethernet_fifo_bready;
+        logic [31:0] s_axi_ethernet_fifo_araddr;
+        logic [7:0]  s_axi_ethernet_fifo_arlen;
+        logic [2:0]  s_axi_ethernet_fifo_arsize;
+        logic [1:0]  s_axi_ethernet_fifo_arburst;
+        logic [0:0]  s_axi_ethernet_fifo_arlock;
+        logic [3:0]  s_axi_ethernet_fifo_arcache;
+        logic [2:0]  s_axi_ethernet_fifo_arprot;
+        logic [3:0]  s_axi_ethernet_fifo_arregion;
+        logic [3:0]  s_axi_ethernet_fifo_arqos;
+        logic        s_axi_ethernet_fifo_arvalid;
+        logic        s_axi_ethernet_fifo_arready;
+        logic [31:0] s_axi_ethernet_fifo_rdata;
+        logic [1:0]  s_axi_ethernet_fifo_rresp;
+        logic        s_axi_ethernet_fifo_rlast;
+        logic        s_axi_ethernet_fifo_rvalid;
+        logic        s_axi_ethernet_fifo_rready;
+
+        xlnx_axi_dwidth_converter i_xlnx_axi_dwidth_converter_ethernet_fifo (
+            .s_axi_aclk     ( clk_i                        ),
+            .s_axi_aresetn  ( rst_ni                       ),
+
+            .s_axi_awid     ( ethernet_fifo.aw_id          ),
+            .s_axi_awaddr   ( ethernet_fifo.aw_addr[31:0]  ),
+            .s_axi_awlen    ( ethernet_fifo.aw_len         ),
+            .s_axi_awsize   ( ethernet_fifo.aw_size        ),
+            .s_axi_awburst  ( ethernet_fifo.aw_burst       ),
+            .s_axi_awlock   ( ethernet_fifo.aw_lock        ),
+            .s_axi_awcache  ( ethernet_fifo.aw_cache       ),
+            .s_axi_awprot   ( ethernet_fifo.aw_prot        ),
+            .s_axi_awregion ( ethernet_fifo.aw_region      ),
+            .s_axi_awqos    ( ethernet_fifo.aw_qos         ),
+            .s_axi_awvalid  ( ethernet_fifo.aw_valid       ),
+            .s_axi_awready  ( ethernet_fifo.aw_ready       ),
+            .s_axi_wdata    ( ethernet_fifo.w_data         ),
+            .s_axi_wstrb    ( ethernet_fifo.w_strb         ),
+            .s_axi_wlast    ( ethernet_fifo.w_last         ),
+            .s_axi_wvalid   ( ethernet_fifo.w_valid        ),
+            .s_axi_wready   ( ethernet_fifo.w_ready        ),
+            .s_axi_bid      ( ethernet_fifo.b_id           ),
+            .s_axi_bresp    ( ethernet_fifo.b_resp         ),
+            .s_axi_bvalid   ( ethernet_fifo.b_valid        ),
+            .s_axi_bready   ( ethernet_fifo.b_ready        ),
+            .s_axi_arid     ( ethernet_fifo.ar_id          ),
+            .s_axi_araddr   ( ethernet_fifo.ar_addr[31:0]  ),
+            .s_axi_arlen    ( ethernet_fifo.ar_len         ),
+            .s_axi_arsize   ( ethernet_fifo.ar_size        ),
+            .s_axi_arburst  ( ethernet_fifo.ar_burst       ),
+            .s_axi_arlock   ( ethernet_fifo.ar_lock        ),
+            .s_axi_arcache  ( ethernet_fifo.ar_cache       ),
+            .s_axi_arprot   ( ethernet_fifo.ar_prot        ),
+            .s_axi_arregion ( ethernet_fifo.ar_region      ),
+            .s_axi_arqos    ( ethernet_fifo.ar_qos         ),
+            .s_axi_arvalid  ( ethernet_fifo.ar_valid       ),
+            .s_axi_arready  ( ethernet_fifo.ar_ready       ),
+            .s_axi_rid      ( ethernet_fifo.r_id           ),
+            .s_axi_rdata    ( ethernet_fifo.r_data         ),
+            .s_axi_rresp    ( ethernet_fifo.r_resp         ),
+            .s_axi_rlast    ( ethernet_fifo.r_last         ),
+            .s_axi_rvalid   ( ethernet_fifo.r_valid        ),
+            .s_axi_rready   ( ethernet_fifo.r_ready        ),
+
+            .m_axi_awaddr   ( s_axi_ethernet_fifo_awaddr   ),
+            .m_axi_awlen    ( s_axi_ethernet_fifo_awlen    ),
+            .m_axi_awsize   ( s_axi_ethernet_fifo_awsize   ),
+            .m_axi_awburst  ( s_axi_ethernet_fifo_awburst  ),
+            .m_axi_awlock   ( s_axi_ethernet_fifo_awlock   ),
+            .m_axi_awcache  ( s_axi_ethernet_fifo_awcache  ),
+            .m_axi_awprot   ( s_axi_ethernet_fifo_awprot   ),
+            .m_axi_awregion ( s_axi_ethernet_fifo_awregion ),
+            .m_axi_awqos    ( s_axi_ethernet_fifo_awqos    ),
+            .m_axi_awvalid  ( s_axi_ethernet_fifo_awvalid  ),
+            .m_axi_awready  ( s_axi_ethernet_fifo_awready  ),
+            .m_axi_wdata    ( s_axi_ethernet_fifo_wdata    ),
+            .m_axi_wstrb    ( s_axi_ethernet_fifo_wstrb    ),
+            .m_axi_wlast    ( s_axi_ethernet_fifo_wlast    ),
+            .m_axi_wvalid   ( s_axi_ethernet_fifo_wvalid   ),
+            .m_axi_wready   ( s_axi_ethernet_fifo_wready   ),
+            .m_axi_bresp    ( s_axi_ethernet_fifo_bresp    ),
+            .m_axi_bvalid   ( s_axi_ethernet_fifo_bvalid   ),
+            .m_axi_bready   ( s_axi_ethernet_fifo_bready   ),
+            .m_axi_araddr   ( s_axi_ethernet_fifo_araddr   ),
+            .m_axi_arlen    ( s_axi_ethernet_fifo_arlen    ),
+            .m_axi_arsize   ( s_axi_ethernet_fifo_arsize   ),
+            .m_axi_arburst  ( s_axi_ethernet_fifo_arburst  ),
+            .m_axi_arlock   ( s_axi_ethernet_fifo_arlock   ),
+            .m_axi_arcache  ( s_axi_ethernet_fifo_arcache  ),
+            .m_axi_arprot   ( s_axi_ethernet_fifo_arprot   ),
+            .m_axi_arregion ( s_axi_ethernet_fifo_arregion ),
+            .m_axi_arqos    ( s_axi_ethernet_fifo_arqos    ),
+            .m_axi_arvalid  ( s_axi_ethernet_fifo_arvalid  ),
+            .m_axi_arready  ( s_axi_ethernet_fifo_arready  ),
+            .m_axi_rdata    ( s_axi_ethernet_fifo_rdata    ),
+            .m_axi_rresp    ( s_axi_ethernet_fifo_rresp    ),
+            .m_axi_rlast    ( s_axi_ethernet_fifo_rlast    ),
+            .m_axi_rvalid   ( s_axi_ethernet_fifo_rvalid   ),
+            .m_axi_rready   ( s_axi_ethernet_fifo_rready   )
+        );
+
+        // Convert the full AXI ethernet FIFO master into AXI lite
+        logic [31:0] s_axi_lite_ethernet_fifo_awaddr;
+        logic        s_axi_lite_ethernet_fifo_awvalid;
+        logic        s_axi_lite_ethernet_fifo_awready;
+        logic [31:0] s_axi_lite_ethernet_fifo_wdata;
+        logic [3:0]  s_axi_lite_ethernet_fifo_wstrb;
+        logic        s_axi_lite_ethernet_fifo_wvalid;
+        logic        s_axi_lite_ethernet_fifo_wready;
+        logic [1:0]  s_axi_lite_ethernet_fifo_bresp;
+        logic        s_axi_lite_ethernet_fifo_bvalid;
+        logic        s_axi_lite_ethernet_fifo_bready;
+        logic [31:0] s_axi_lite_ethernet_fifo_araddr;
+        logic        s_axi_lite_ethernet_fifo_arvalid;
+        logic        s_axi_lite_ethernet_fifo_arready;
+        logic [31:0] s_axi_lite_ethernet_fifo_rdata;
+        logic [1:0]  s_axi_lite_ethernet_fifo_rresp;
+        logic        s_axi_lite_ethernet_fifo_rvalid;
+        logic        s_axi_lite_ethernet_fifo_rready;
+
+        xlnx_axi_lite_converter i_xlnx_axi_lite_converter_ethernet_fifo (
+            .aclk           ( clk_i                            ),
+            .aresetn        ( rst_ni                           ),
+
+            .s_axi_awaddr   ( s_axi_ethernet_fifo_awaddr       ),
+            .s_axi_awlen    ( s_axi_ethernet_fifo_awlen        ),
+            .s_axi_awsize   ( s_axi_ethernet_fifo_awsize       ),
+            .s_axi_awburst  ( s_axi_ethernet_fifo_awburst      ),
+            .s_axi_awlock   ( s_axi_ethernet_fifo_awlock       ),
+            .s_axi_awcache  ( s_axi_ethernet_fifo_awcache      ),
+            .s_axi_awprot   ( s_axi_ethernet_fifo_awprot       ),
+            .s_axi_awregion ( s_axi_ethernet_fifo_awregion     ),
+            .s_axi_awqos    ( s_axi_ethernet_fifo_awqos        ),
+            .s_axi_awvalid  ( s_axi_ethernet_fifo_awvalid      ),
+            .s_axi_awready  ( s_axi_ethernet_fifo_awready      ),
+            .s_axi_wdata    ( s_axi_ethernet_fifo_wdata        ),
+            .s_axi_wstrb    ( s_axi_ethernet_fifo_wstrb        ),
+            .s_axi_wlast    ( s_axi_ethernet_fifo_wlast        ),
+            .s_axi_wvalid   ( s_axi_ethernet_fifo_wvalid       ),
+            .s_axi_wready   ( s_axi_ethernet_fifo_wready       ),
+            .s_axi_bresp    ( s_axi_ethernet_fifo_bresp        ),
+            .s_axi_bvalid   ( s_axi_ethernet_fifo_bvalid       ),
+            .s_axi_bready   ( s_axi_ethernet_fifo_bready       ),
+            .s_axi_araddr   ( s_axi_ethernet_fifo_araddr       ),
+            .s_axi_arlen    ( s_axi_ethernet_fifo_arlen        ),
+            .s_axi_arsize   ( s_axi_ethernet_fifo_arsize       ),
+            .s_axi_arburst  ( s_axi_ethernet_fifo_arburst      ),
+            .s_axi_arlock   ( s_axi_ethernet_fifo_arlock       ),
+            .s_axi_arcache  ( s_axi_ethernet_fifo_arcache      ),
+            .s_axi_arprot   ( s_axi_ethernet_fifo_arprot       ),
+            .s_axi_arregion ( s_axi_ethernet_fifo_arregion     ),
+            .s_axi_arqos    ( s_axi_ethernet_fifo_arqos        ),
+            .s_axi_arvalid  ( s_axi_ethernet_fifo_arvalid      ),
+            .s_axi_arready  ( s_axi_ethernet_fifo_arready      ),
+            .s_axi_rdata    ( s_axi_ethernet_fifo_rdata        ),
+            .s_axi_rresp    ( s_axi_ethernet_fifo_rresp        ),
+            .s_axi_rlast    ( s_axi_ethernet_fifo_rlast        ),
+            .s_axi_rvalid   ( s_axi_ethernet_fifo_rvalid       ),
+            .s_axi_rready   ( s_axi_ethernet_fifo_rready       ),
+
+            .m_axi_awaddr   ( s_axi_lite_ethernet_fifo_awaddr  ),
+            .m_axi_awprot   ( /* NC */                         ),
+            .m_axi_awvalid  ( s_axi_lite_ethernet_fifo_awvalid ),
+            .m_axi_awready  ( s_axi_lite_ethernet_fifo_awready ),
+            .m_axi_wdata    ( s_axi_lite_ethernet_fifo_wdata   ),
+            .m_axi_wstrb    ( s_axi_lite_ethernet_fifo_wstrb   ),
+            .m_axi_wvalid   ( s_axi_lite_ethernet_fifo_wvalid  ),
+            .m_axi_wready   ( s_axi_lite_ethernet_fifo_wready  ),
+            .m_axi_bresp    ( s_axi_lite_ethernet_fifo_bresp   ),
+            .m_axi_bvalid   ( s_axi_lite_ethernet_fifo_bvalid  ),
+            .m_axi_bready   ( s_axi_lite_ethernet_fifo_bready  ),
+            .m_axi_araddr   ( s_axi_lite_ethernet_fifo_araddr  ),
+            .m_axi_arprot   ( /* NC */                         ),
+            .m_axi_arvalid  ( s_axi_lite_ethernet_fifo_arvalid ),
+            .m_axi_arready  ( s_axi_lite_ethernet_fifo_arready ),
+            .m_axi_rdata    ( s_axi_lite_ethernet_fifo_rdata   ),
+            .m_axi_rresp    ( s_axi_lite_ethernet_fifo_rresp   ),
+            .m_axi_rvalid   ( s_axi_lite_ethernet_fifo_rvalid  ),
+            .m_axi_rready   ( s_axi_lite_ethernet_fifo_rready  )
+        );
+
+        logic        mm2s_prmry_reset_out_n;
+        logic        fifo_axi_str_txd_tvalid;
+        logic        fifo_axi_str_txd_tready;
+        logic        fifo_axi_str_txd_tlast;
+        logic [3:0]  fifo_axi_str_txd_tkeep;
+        logic [31:0] fifo_axi_str_txd_tdata;
+        logic        fifo_mm2s_cntrl_reset_out_n;
+        logic        fifo_axi_str_txc_tvalid;
+        logic        fifo_axi_str_txc_tready;
+        logic        fifo_axi_str_txc_tlast;
+        logic [3:0]  fifo_axi_str_txc_tkeep;
+        logic [31:0] fifo_axi_str_txc_tdata;
+        logic        fifo_s2mm_prmry_reset_out_n;
+        logic        fifo_axi_str_rxd_tvalid;
+        logic        fifo_axi_str_rxd_tready;
+        logic        fifo_axi_str_rxd_tlast;
+        logic [3:0]  fifo_axi_str_rxd_tkeep;
+        logic [31:0] fifo_axi_str_rxd_tdata;
+
+        xlnx_axi_fifo (
+            .interrupt              ( irq_sources[7]                   ),
+            .s_axi_aclk             ( clk_i                            ),
+            .s_axi_aresetn          ( rst_ni                           ),
+            .s_axi_awaddr           ( s_axi_lite_ethernet_fifo_awaddr  ),
+            .s_axi_awvalid          ( s_axi_lite_ethernet_fifo_awvalid ),
+            .s_axi_awready          ( s_axi_lite_ethernet_fifo_awready ),
+            .s_axi_wdata            ( s_axi_lite_ethernet_fifo_wdata   ),
+            .s_axi_wstrb            ( s_axi_lite_ethernet_fifo_wstrb   ),
+            .s_axi_wvalid           ( s_axi_lite_ethernet_fifo_wvalid  ),
+            .s_axi_wready           ( s_axi_lite_ethernet_fifo_wready  ),
+            .s_axi_bresp            ( s_axi_lite_ethernet_fifo_bresp   ),
+            .s_axi_bvalid           ( s_axi_lite_ethernet_fifo_bvalid  ),
+            .s_axi_bready           ( s_axi_lite_ethernet_fifo_bready  ),
+            .s_axi_araddr           ( s_axi_lite_ethernet_fifo_araddr  ),
+            .s_axi_arvalid          ( s_axi_lite_ethernet_fifo_arvalid ),
+            .s_axi_arready          ( s_axi_lite_ethernet_fifo_arready ),
+            .s_axi_rdata            ( s_axi_lite_ethernet_fifo_rdata   ),
+            .s_axi_rresp            ( s_axi_lite_ethernet_fifo_rresp   ),
+            .s_axi_rvalid           ( s_axi_lite_ethernet_fifo_rvalid  ),
+            .s_axi_rready           ( s_axi_lite_ethernet_fifo_rready  ),
+            .mm2s_prmry_reset_out_n ( fifo_mm2s_prmry_reset_out_n      ),
+            .axi_str_txd_tvalid     ( fifo_axi_str_txd_tvalid          ),
+            .axi_str_txd_tready     ( fifo_axi_str_txd_tready          ),
+            .axi_str_txd_tlast      ( fifo_axi_str_txd_tlast           ),
+            .axi_str_txd_tkeep      ( fifo_axi_str_txd_tkeep           ),
+            .axi_str_txd_tdata      ( fifo_axi_str_txd_tdata           ),
+            .mm2s_cntrl_reset_out_n ( fifo_mm2s_cntrl_reset_out_n      ),
+            .axi_str_txc_tvalid     ( fifo_axi_str_txc_tvalid          ),
+            .axi_str_txc_tready     ( fifo_axi_str_txc_tready          ),
+            .axi_str_txc_tlast      ( fifo_axi_str_txc_tlast           ),
+            .axi_str_txc_tkeep      ( fifo_axi_str_txc_tkeep           ),
+            .axi_str_txc_tdata      ( fifo_axi_str_txc_tdata           ),
+            .s2mm_prmry_reset_out_n ( fifo_s2mm_prmry_reset_out_n      ),
+            .axi_str_rxd_tvalid     ( fifo_axi_str_rxd_tvalid          ),
+            .axi_str_rxd_tready     ( fifo_axi_str_rxd_tready          ),
+            .axi_str_rxd_tlast      ( fifo_axi_str_rxd_tlast           ),
+            .axi_str_rxd_tkeep      ( fifo_axi_str_rxd_tkeep           ),
+            .axi_str_rxd_tdata      ( fifo_axi_str_rxd_tdata           )
+        );
+
+        // Convert the incoming ethernet MAC master down to 32bits
+        logic [31:0] s_axi_ethernet_mac_awaddr;
+        logic [7:0]  s_axi_ethernet_mac_awlen;
+        logic [2:0]  s_axi_ethernet_mac_awsize;
+        logic [1:0]  s_axi_ethernet_mac_awburst;
+        logic [0:0]  s_axi_ethernet_mac_awlock;
+        logic [3:0]  s_axi_ethernet_mac_awcache;
+        logic [2:0]  s_axi_ethernet_mac_awprot;
+        logic [3:0]  s_axi_ethernet_mac_awregion;
+        logic [3:0]  s_axi_ethernet_mac_awqos;
+        logic        s_axi_ethernet_mac_awvalid;
+        logic        s_axi_ethernet_mac_awready;
+        logic [31:0] s_axi_ethernet_mac_wdata;
+        logic [3:0]  s_axi_ethernet_mac_wstrb;
+        logic        s_axi_ethernet_mac_wlast;
+        logic        s_axi_ethernet_mac_wvalid;
+        logic        s_axi_ethernet_mac_wready;
+        logic [1:0]  s_axi_ethernet_mac_bresp;
+        logic        s_axi_ethernet_mac_bvalid;
+        logic        s_axi_ethernet_mac_bready;
+        logic [31:0] s_axi_ethernet_mac_araddr;
+        logic [7:0]  s_axi_ethernet_mac_arlen;
+        logic [2:0]  s_axi_ethernet_mac_arsize;
+        logic [1:0]  s_axi_ethernet_mac_arburst;
+        logic [0:0]  s_axi_ethernet_mac_arlock;
+        logic [3:0]  s_axi_ethernet_mac_arcache;
+        logic [2:0]  s_axi_ethernet_mac_arprot;
+        logic [3:0]  s_axi_ethernet_mac_arregion;
+        logic [3:0]  s_axi_ethernet_mac_arqos;
+        logic        s_axi_ethernet_mac_arvalid;
+        logic        s_axi_ethernet_mac_arready;
+        logic [31:0] s_axi_ethernet_mac_rdata;
+        logic [1:0]  s_axi_ethernet_mac_rresp;
+        logic        s_axi_ethernet_mac_rlast;
+        logic        s_axi_ethernet_mac_rvalid;
+        logic        s_axi_ethernet_mac_rready;
+
+        xlnx_axi_dwidth_converter i_xlnx_axi_dwidth_converter_ethernet_mac (
+            .s_axi_aclk     ( clk_i                       ),
+            .s_axi_aresetn  ( rst_ni                      ),
+
+            .s_axi_awid     ( ethernet_mac.aw_id          ),
+            .s_axi_awaddr   ( ethernet_mac.aw_addr[31:0]  ),
+            .s_axi_awlen    ( ethernet_mac.aw_len         ),
+            .s_axi_awsize   ( ethernet_mac.aw_size        ),
+            .s_axi_awburst  ( ethernet_mac.aw_burst       ),
+            .s_axi_awlock   ( ethernet_mac.aw_lock        ),
+            .s_axi_awcache  ( ethernet_mac.aw_cache       ),
+            .s_axi_awprot   ( ethernet_mac.aw_prot        ),
+            .s_axi_awregion ( ethernet_mac.aw_region      ),
+            .s_axi_awqos    ( ethernet_mac.aw_qos         ),
+            .s_axi_awvalid  ( ethernet_mac.aw_valid       ),
+            .s_axi_awready  ( ethernet_mac.aw_ready       ),
+            .s_axi_wdata    ( ethernet_mac.w_data         ),
+            .s_axi_wstrb    ( ethernet_mac.w_strb         ),
+            .s_axi_wlast    ( ethernet_mac.w_last         ),
+            .s_axi_wvalid   ( ethernet_mac.w_valid        ),
+            .s_axi_wready   ( ethernet_mac.w_ready        ),
+            .s_axi_bid      ( ethernet_mac.b_id           ),
+            .s_axi_bresp    ( ethernet_mac.b_resp         ),
+            .s_axi_bvalid   ( ethernet_mac.b_valid        ),
+            .s_axi_bready   ( ethernet_mac.b_ready        ),
+            .s_axi_arid     ( ethernet_mac.ar_id          ),
+            .s_axi_araddr   ( ethernet_mac.ar_addr[31:0]  ),
+            .s_axi_arlen    ( ethernet_mac.ar_len         ),
+            .s_axi_arsize   ( ethernet_mac.ar_size        ),
+            .s_axi_arburst  ( ethernet_mac.ar_burst       ),
+            .s_axi_arlock   ( ethernet_mac.ar_lock        ),
+            .s_axi_arcache  ( ethernet_mac.ar_cache       ),
+            .s_axi_arprot   ( ethernet_mac.ar_prot        ),
+            .s_axi_arregion ( ethernet_mac.ar_region      ),
+            .s_axi_arqos    ( ethernet_mac.ar_qos         ),
+            .s_axi_arvalid  ( ethernet_mac.ar_valid       ),
+            .s_axi_arready  ( ethernet_mac.ar_ready       ),
+            .s_axi_rid      ( ethernet_mac.r_id           ),
+            .s_axi_rdata    ( ethernet_mac.r_data         ),
+            .s_axi_rresp    ( ethernet_mac.r_resp         ),
+            .s_axi_rlast    ( ethernet_mac.r_last         ),
+            .s_axi_rvalid   ( ethernet_mac.r_valid        ),
+            .s_axi_rready   ( ethernet_mac.r_ready        ),
+
+            .m_axi_awaddr   ( s_axi_ethernet_mac_awaddr   ),
+            .m_axi_awlen    ( s_axi_ethernet_mac_awlen    ),
+            .m_axi_awsize   ( s_axi_ethernet_mac_awsize   ),
+            .m_axi_awburst  ( s_axi_ethernet_mac_awburst  ),
+            .m_axi_awlock   ( s_axi_ethernet_mac_awlock   ),
+            .m_axi_awcache  ( s_axi_ethernet_mac_awcache  ),
+            .m_axi_awprot   ( s_axi_ethernet_mac_awprot   ),
+            .m_axi_awregion ( s_axi_ethernet_mac_awregion ),
+            .m_axi_awqos    ( s_axi_ethernet_mac_awqos    ),
+            .m_axi_awvalid  ( s_axi_ethernet_mac_awvalid  ),
+            .m_axi_awready  ( s_axi_ethernet_mac_awready  ),
+            .m_axi_wdata    ( s_axi_ethernet_mac_wdata    ),
+            .m_axi_wstrb    ( s_axi_ethernet_mac_wstrb    ),
+            .m_axi_wlast    ( s_axi_ethernet_mac_wlast    ),
+            .m_axi_wvalid   ( s_axi_ethernet_mac_wvalid   ),
+            .m_axi_wready   ( s_axi_ethernet_mac_wready   ),
+            .m_axi_bresp    ( s_axi_ethernet_mac_bresp    ),
+            .m_axi_bvalid   ( s_axi_ethernet_mac_bvalid   ),
+            .m_axi_bready   ( s_axi_ethernet_mac_bready   ),
+            .m_axi_araddr   ( s_axi_ethernet_mac_araddr   ),
+            .m_axi_arlen    ( s_axi_ethernet_mac_arlen    ),
+            .m_axi_arsize   ( s_axi_ethernet_mac_arsize   ),
+            .m_axi_arburst  ( s_axi_ethernet_mac_arburst  ),
+            .m_axi_arlock   ( s_axi_ethernet_mac_arlock   ),
+            .m_axi_arcache  ( s_axi_ethernet_mac_arcache  ),
+            .m_axi_arprot   ( s_axi_ethernet_mac_arprot   ),
+            .m_axi_arregion ( s_axi_ethernet_mac_arregion ),
+            .m_axi_arqos    ( s_axi_ethernet_mac_arqos    ),
+            .m_axi_arvalid  ( s_axi_ethernet_mac_arvalid  ),
+            .m_axi_arready  ( s_axi_ethernet_mac_arready  ),
+            .m_axi_rdata    ( s_axi_ethernet_mac_rdata    ),
+            .m_axi_rresp    ( s_axi_ethernet_mac_rresp    ),
+            .m_axi_rlast    ( s_axi_ethernet_mac_rlast    ),
+            .m_axi_rvalid   ( s_axi_ethernet_mac_rvalid   ),
+            .m_axi_rready   ( s_axi_ethernet_mac_rready   )
+        );
+
+        // Convert the full AXI ethernet MAC master into AXI lite
+        logic [31:0] s_axi_lite_ethernet_mac_awaddr;
+        logic        s_axi_lite_ethernet_mac_awvalid;
+        logic        s_axi_lite_ethernet_mac_awready;
+        logic [31:0] s_axi_lite_ethernet_mac_wdata;
+        logic [3:0]  s_axi_lite_ethernet_mac_wstrb;
+        logic        s_axi_lite_ethernet_mac_wvalid;
+        logic        s_axi_lite_ethernet_mac_wready;
+        logic [1:0]  s_axi_lite_ethernet_mac_bresp;
+        logic        s_axi_lite_ethernet_mac_bvalid;
+        logic        s_axi_lite_ethernet_mac_bready;
+        logic [31:0] s_axi_lite_ethernet_mac_araddr;
+        logic        s_axi_lite_ethernet_mac_arvalid;
+        logic        s_axi_lite_ethernet_mac_arready;
+        logic [31:0] s_axi_lite_ethernet_mac_rdata;
+        logic [1:0]  s_axi_lite_ethernet_mac_rresp;
+        logic        s_axi_lite_ethernet_mac_rvalid;
+        logic        s_axi_lite_ethernet_mac_rready;
+
+        xlnx_axi_lite_converter i_xlnx_axi_lite_converter_ethernet_mac (
+            .aclk           ( clk_i                           ),
+            .aresetn        ( rst_ni                          ),
+            .s_axi_awaddr   ( s_axi_ethernet_mac_awaddr       ),
+            .s_axi_awlen    ( s_axi_ethernet_mac_awlen        ),
+            .s_axi_awsize   ( s_axi_ethernet_mac_awsize       ),
+            .s_axi_awburst  ( s_axi_ethernet_mac_awburst      ),
+            .s_axi_awlock   ( s_axi_ethernet_mac_awlock       ),
+            .s_axi_awcache  ( s_axi_ethernet_mac_awcache      ),
+            .s_axi_awprot   ( s_axi_ethernet_mac_awprot       ),
+            .s_axi_awregion ( s_axi_ethernet_mac_awregion     ),
+            .s_axi_awqos    ( s_axi_ethernet_mac_awqos        ),
+            .s_axi_awvalid  ( s_axi_ethernet_mac_awvalid      ),
+            .s_axi_awready  ( s_axi_ethernet_mac_awready      ),
+            .s_axi_wdata    ( s_axi_ethernet_mac_wdata        ),
+            .s_axi_wstrb    ( s_axi_ethernet_mac_wstrb        ),
+            .s_axi_wlast    ( s_axi_ethernet_mac_wlast        ),
+            .s_axi_wvalid   ( s_axi_ethernet_mac_wvalid       ),
+            .s_axi_wready   ( s_axi_ethernet_mac_wready       ),
+            .s_axi_bresp    ( s_axi_ethernet_mac_bresp        ),
+            .s_axi_bvalid   ( s_axi_ethernet_mac_bvalid       ),
+            .s_axi_bready   ( s_axi_ethernet_mac_bready       ),
+            .s_axi_araddr   ( s_axi_ethernet_mac_araddr       ),
+            .s_axi_arlen    ( s_axi_ethernet_mac_arlen        ),
+            .s_axi_arsize   ( s_axi_ethernet_mac_arsize       ),
+            .s_axi_arburst  ( s_axi_ethernet_mac_arburst      ),
+            .s_axi_arlock   ( s_axi_ethernet_mac_arlock       ),
+            .s_axi_arcache  ( s_axi_ethernet_mac_arcache      ),
+            .s_axi_arprot   ( s_axi_ethernet_mac_arprot       ),
+            .s_axi_arregion ( s_axi_ethernet_mac_arregion     ),
+            .s_axi_arqos    ( s_axi_ethernet_mac_arqos        ),
+            .s_axi_arvalid  ( s_axi_ethernet_mac_arvalid      ),
+            .s_axi_arready  ( s_axi_ethernet_mac_arready      ),
+            .s_axi_rdata    ( s_axi_ethernet_mac_rdata        ),
+            .s_axi_rresp    ( s_axi_ethernet_mac_rresp        ),
+            .s_axi_rlast    ( s_axi_ethernet_mac_rlast        ),
+            .s_axi_rvalid   ( s_axi_ethernet_mac_rvalid       ),
+            .s_axi_rready   ( s_axi_ethernet_mac_rready       ),
+
+            .m_axi_awaddr   ( s_axi_lite_ethernet_mac_awaddr  ),
+            .m_axi_awprot   ( /* NC */                        ),
+            .m_axi_awvalid  ( s_axi_lite_ethernet_mac_awvalid ),
+            .m_axi_awready  ( s_axi_lite_ethernet_mac_awready ),
+            .m_axi_wdata    ( s_axi_lite_ethernet_mac_wdata   ),
+            .m_axi_wstrb    ( s_axi_lite_ethernet_mac_wstrb   ),
+            .m_axi_wvalid   ( s_axi_lite_ethernet_mac_wvalid  ),
+            .m_axi_wready   ( s_axi_lite_ethernet_mac_wready  ),
+            .m_axi_bresp    ( s_axi_lite_ethernet_mac_bresp   ),
+            .m_axi_bvalid   ( s_axi_lite_ethernet_mac_bvalid  ),
+            .m_axi_bready   ( s_axi_lite_ethernet_mac_bready  ),
+            .m_axi_araddr   ( s_axi_lite_ethernet_mac_araddr  ),
+            .m_axi_arprot   ( /* NC */                        ),
+            .m_axi_arvalid  ( s_axi_lite_ethernet_mac_arvalid ),
+            .m_axi_arready  ( s_axi_lite_ethernet_mac_arready ),
+            .m_axi_rdata    ( s_axi_lite_ethernet_mac_rdata   ),
+            .m_axi_rresp    ( s_axi_lite_ethernet_mac_rresp   ),
+            .m_axi_rvalid   ( s_axi_lite_ethernet_mac_rvalid  ),
+            .m_axi_rready   ( s_axi_lite_ethernet_mac_rready  )
+        );
+
+        // XXX The mdio signals from the MAC are not connected within the blackbox
+        // axi_ethernet IP. The reason is unclear, but we are working on a fix.
+        // Ethernet can work without it as the Phy will autonegotiate gigabit.
+
+        xlnx_axi_ethernet i_xlnx_axi_ethernet_mac (
+            .s_axi_lite_resetn      ( rst_ni                           ),
+            .s_axi_lite_clk         ( clk_i                            ),
+            // mac_irq isn't listed in the documentation. Perhaps it is
+            // redundant with the "interrupt" wire?
+            .mac_irq                ( /* NC */                         ),
+            .axis_clk               ( clk_i                            ),
+            .axi_txd_arstn          ( fifo_mm2s_prmry_reset_out_n      ),
+            .axi_txc_arstn          ( fifo_mm2s_cntrl_reset_out_n      ),
+            .axi_rxd_arstn          ( fifo_s2mm_prmry_reset_out_n      ),
+            .axi_rxs_arstn          ( rst_ni                           ),
+            .interrupt              ( irq_sources[2]                   ),
+            .gtx_clk                ( phy_tx_clk_i                     ),
+            .phy_rst_n              ( eth_rst_n                        ),
+            .ref_clk                ( clk_200MHz_i                     ),
+            // These clock outputs don't seem to be needed
+            .gtx_clk90_out          ( /* NC */                         ),
+            .gtx_clk_out            ( /* NC */                         ),
+            .s_axi_araddr           ( s_axi_lite_ethernet_mac_araddr   ),
+            .s_axi_arready          ( s_axi_lite_ethernet_mac_arready  ),
+            .s_axi_arvalid          ( s_axi_lite_ethernet_mac_arvalid  ),
+            .s_axi_awaddr           ( s_axi_lite_ethernet_mac_awaddr   ),
+            .s_axi_awready          ( s_axi_lite_ethernet_mac_awready  ),
+            .s_axi_awvalid          ( s_axi_lite_ethernet_mac_awvalid  ),
+            .s_axi_bready           ( s_axi_lite_ethernet_mac_bready   ),
+            .s_axi_bresp            ( s_axi_lite_ethernet_mac_bresp    ),
+            .s_axi_bvalid           ( s_axi_lite_ethernet_mac_bvalid   ),
+            .s_axi_rdata            ( s_axi_lite_ethernet_mac_rdata    ),
+            .s_axi_rready           ( s_axi_lite_ethernet_mac_rready   ),
+            .s_axi_rresp            ( s_axi_lite_ethernet_mac_rresp    ),
+            .s_axi_rvalid           ( s_axi_lite_ethernet_mac_rvalid   ),
+            .s_axi_wdata            ( s_axi_lite_ethernet_mac_wdata    ),
+            .s_axi_wready           ( s_axi_lite_ethernet_mac_wready   ),
+            .s_axi_wstrb            ( s_axi_lite_ethernet_mac_wstrb    ),
+            .s_axi_wvalid           ( s_axi_lite_ethernet_mac_wvalid   ),
+            .s_axis_txc_tdata       ( fifo_axi_str_txc_tdata           ),
+            .s_axis_txc_tkeep       ( fifo_axi_str_txc_tkeep           ),
+            .s_axis_txc_tlast       ( fifo_axi_str_txc_tlast           ),
+            .s_axis_txc_tready      ( fifo_axi_str_txc_tready          ),
+            .s_axis_txc_tvalid      ( fifo_axi_str_txc_tvalid          ),
+            .s_axis_txd_tdata       ( fifo_axi_str_txd_tdata           ),
+            .s_axis_txd_tkeep       ( fifo_axi_str_txd_tkeep           ),
+            .s_axis_txd_tlast       ( fifo_axi_str_txd_tlast           ),
+            .s_axis_txd_tready      ( fifo_axi_str_txd_tready          ),
+            .s_axis_txd_tvalid      ( fifo_axi_str_txd_tvalid          ),
+            .m_axis_rxd_tdata       ( fifo_axi_str_rxd_tdata           ),
+            .m_axis_rxd_tkeep       ( fifo_axi_str_rxd_tkeep           ),
+            .m_axis_rxd_tlast       ( fifo_axi_str_rxd_tlast           ),
+            .m_axis_rxd_tready      ( fifo_axi_str_rxd_tready          ),
+            .m_axis_rxd_tvalid      ( fifo_axi_str_rxd_tvalid          ),
+            // The specification gives the case of connecting to the FIFO
+            // as an example, specifying these connections
+            .m_axis_rxs_tdata       ( /* NC */                         ),
+            .m_axis_rxs_tkeep       ( /* NC */                         ),
+            .m_axis_rxs_tlast       ( /* NC */                         ),
+            .m_axis_rxs_tready      ( 1'b1                             ),
+            .m_axis_rxs_tvalid      ( /* NC */                         ),
+            .rgmii_rd               ( eth_rxd                          ),
+            .rgmii_rx_ctl           ( eth_rxctl                        ),
+            .rgmii_rxc              ( eth_rxck                         ),
+            .rgmii_td               ( eth_txd                          ),
+            .rgmii_tx_ctl           ( eth_txctl                        ),
+            .rgmii_txc              ( eth_txck                         ),
+            .mdio_mdc               ( eth_mdc                          ),
+            .mdio_mdio_i            ( eth_mdio_i                       ),
+            .mdio_mdio_o            ( eth_mdio_o                       ),
+            .mdio_mdio_t            ( eth_mdio_oe                      )
+        );
+    end
+
+    if (InclLowriscEthernet) begin : gen_lowrisc_ethernet
+        logic                    clk_200_int, clk_rgmii, clk_rgmii_quad;
+        logic                    eth_en, eth_we, eth_int_n, eth_pme_n;
+        logic [AxiAddrWidth-1:0] eth_addr;
+        logic [AxiDataWidth-1:0] eth_wrdata, eth_rdata;
+        logic [AxiDataWidth/8-1:0] eth_be;
+
+        axi2mem #(
+            .AXI_ID_WIDTH   ( AxiIdWidth       ),
+            .AXI_ADDR_WIDTH ( AxiAddrWidth     ),
+            .AXI_DATA_WIDTH ( AxiDataWidth     ),
+            .AXI_USER_WIDTH ( AxiUserWidth     )
+        ) i_axi2rom (
+            .clk_i  ( clk_i                   ),
+            .rst_ni ( rst_ni                  ),
+            .slave  ( ethernet                ),
+            .req_o  ( eth_en                  ),
+            .we_o   ( eth_we                  ),
+            .addr_o ( eth_addr                ),
+            .be_o   ( eth_be                  ),
+            .data_o ( eth_wrdata              ),
+            .data_i ( eth_rdata               )
+        );
+
+        framing_top eth_rgmii (
+           .msoc_clk(clk_i),
+           .core_lsu_addr(eth_addr[14:0]),
+           .core_lsu_wdata(eth_wrdata),
+           .core_lsu_be(eth_be),
+           .ce_d(eth_en),
+           .we_d(eth_en & eth_we),
+           .framing_sel(eth_en),
+           .framing_rdata(eth_rdata),
+           .rst_int(!rst_ni),
+           .clk_int(phy_tx_clk_i), // 125 MHz in-phase
+           .clk90_int(eth_clk_i),    // 125 MHz quadrature
+           .clk_200_int(clk_200MHz_i),
+           /*
+            * Ethernet: 1000BASE-T RGMII
+            */
+           .phy_rx_clk(eth_rxck),
+           .phy_rxd(eth_rxd),
+           .phy_rx_ctl(eth_rxctl),
+           .phy_tx_clk(eth_txck),
+           .phy_txd(eth_txd),
+           .phy_tx_ctl(eth_txctl),
+           .phy_reset_n(eth_rst_n),
+           .phy_int_n(eth_int_n),
+           .phy_pme_n(eth_pme_n),
+           .phy_mdc(eth_mdc),
+           .phy_mdio_i(eth_mdio_i),
+           .phy_mdio_o(eth_mdio_o),
+           .phy_mdio_oe(~eth_mdio_oe),
+           .eth_irq(irq_sources[2])
+        );
     end
 
     // 5. GPIO

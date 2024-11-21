@@ -19,7 +19,8 @@ module ariane_peripherals #(
     parameter int AxiUserWidth = 1,
     parameter bit InclUART     = 1,
     parameter bit InclSPI      = 0,
-    parameter bit InclEthernet = 0,
+    parameter bit InclXilinxEthernet = 0,
+    parameter bit InclLowriscEthernet = 0,
     parameter bit InclGPIO     = 0,
     parameter bit InclTimer    = 1
 ) (
