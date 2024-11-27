@@ -530,20 +530,19 @@ module ariane_peripherals #(
     end else begin
         // Tie off signals with no ethernet
         assign irq_sources [2] = 1'b0;
-        assign irq_sources [7] = 1'b0;
-        assign ethernet.aw_ready = 1'b1;
-        assign ethernet.ar_ready = 1'b1;
-        assign ethernet.w_ready = 1'b1;
+        assign ethernet_mac.aw_ready = 1'b1;
+        assign ethernet_mac.ar_ready = 1'b1;
+        assign ethernet_mac.w_ready = 1'b1;
 
-        assign ethernet.b_valid = ethernet.aw_valid;
-        assign ethernet.b_id = ethernet.aw_id;
-        assign ethernet.b_resp = axi_pkg::RESP_SLVERR;
-        assign ethernet.b_user = '0;
+        assign ethernet_mac.b_valid = ethernet_mac.aw_valid;
+        assign ethernet_mac.b_id = ethernet_mac.aw_id;
+        assign ethernet_mac.b_resp = axi_pkg::RESP_SLVERR;
+        assign ethernet_mac.b_user = '0;
 
-        assign ethernet.r_valid = ethernet.ar_valid;
-        assign ethernet.r_resp = axi_pkg::RESP_SLVERR;
-        assign ethernet.r_data = 'hdeadbeef;
-        assign ethernet.r_last = 1'b1;
+        assign ethernet_mac.r_valid = ethernet_mac.ar_valid;
+        assign ethernet_mac.r_resp = axi_pkg::RESP_SLVERR;
+        assign ethernet_mac.r_data = 'hdeadbeef;
+        assign ethernet_mac.r_last = 1'b1;
     end
 
     if (InclXilinxEthernet) begin : gen_axi_ethernet
@@ -1074,6 +1073,22 @@ module ariane_peripherals #(
             .mdio_mdio_o            ( eth_mdio_o                       ),
             .mdio_mdio_t            ( eth_mdio_oe                      )
         );
+    end else begin
+        // Tie off signals with no ethernet_fifo
+        assign irq_sources [7] = 1'b0;
+        assign ethernet_fifo.aw_ready = 1'b1;
+        assign ethernet_fifo.ar_ready = 1'b1;
+        assign ethernet_fifo.w_ready = 1'b1;
+
+        assign ethernet_fifo.b_valid = ethernet_fifo.aw_valid;
+        assign ethernet_fifo.b_id = ethernet_fifo.aw_id;
+        assign ethernet_fifo.b_resp = axi_pkg::RESP_SLVERR;
+        assign ethernet_fifo.b_user = '0;
+
+        assign ethernet_fifo.r_valid = ethernet_fifo.ar_valid;
+        assign ethernet_fifo.r_resp = axi_pkg::RESP_SLVERR;
+        assign ethernet_fifo.r_data = 'hdeadbeef;
+        assign ethernet_fifo.r_last = 1'b1;
     end
 
     if (InclLowriscEthernet) begin : gen_lowrisc_ethernet
@@ -1091,7 +1106,7 @@ module ariane_peripherals #(
         ) i_axi2rom (
             .clk_i  ( clk_i                   ),
             .rst_ni ( rst_ni                  ),
-            .slave  ( ethernet                ),
+            .slave  ( ethernet_mac            ),
             .req_o  ( eth_en                  ),
             .we_o   ( eth_we                  ),
             .addr_o ( eth_addr                ),
