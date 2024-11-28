@@ -118,13 +118,37 @@
       //   //interrupt-parent = <&PLIC0>;
       // };
     };
-    eth: lowrisc-eth@30000000 {
-      compatible = "lowrisc-eth";
-      device_type = "network";
-      interrupt-parent = <&PLIC0>;
-      interrupts = <3 0>;
-      local-mac-address = [00 18 3e 02 e3 7f]; // This needs to change if more than one GenesysII on a VLAN
-      reg = <0x30000000 0x8000>;
+    axi_ethernet_eth: ethernet@38000000 {
+        compatible = "xlnx,axi-ethernet-7.2";
+        device_type = "network";
+        interrupt-parent = <&PLIC0>;
+        interrupts = <3 0>;
+        axistream-connected = <&axi_fifo_eth>;
+        axistream-connected-control = <&axi_fifo_eth>;
+        phy-mode = "rgmii";
+        reg = <0x38000000 0x40000>;
+        xlnx,kintex7;
+        local-mac-address = [00 18 3e 02 e3 7f]; // This needs to change if more than one GenesysII on a VLAN
+        clock-frequency = <CLOCK_FREQUENCY>;
+        // axi_ethernet_mdio: mdio {}; // Due to a Vivado issue, MDIO is currently not supported
+    };
+    axi_fifo_eth: @30000000 {
+        compatible = "xlnx,axi-fifo-mm-s-4.2";
+        interrupt-names = "interrupt";
+        interrupt-parent = <&PLIC0>;
+        interrupts = <8 0>;
+        reg = <0x30000000 0x80>;
+        xlnx,axi-str-rxd-protocol = "XIL_AXI_STREAM_ETH_DATA";
+        xlnx,axi-str-txc-protocol = "XIL_AXI_STREAM_ETH_CTRL";
+        xlnx,axi-str-txd-protocol = "XIL_AXI_STREAM_ETH_DATA";
+        xlnx,rx-fifo-depth = <4096>;
+        xlnx,rx-fifo-pe-threshold = <10>;
+        xlnx,rx-fifo-pf-threshold = <4000>;
+        xlnx,tx-fifo-depth = <4096>;
+        xlnx,tx-fifo-pe-threshold = <10>;
+        xlnx,tx-fifo-pf-threshold = <4000>;
+        axistream-connected = <&axi_ethernet_eth>;
+        axistream-connected-control = <&axi_ethernet_eth>;
     };
     xlnx_gpio: gpio@40000000 {
       #gpio-cells = <2>;
