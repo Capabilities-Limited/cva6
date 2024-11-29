@@ -64,9 +64,9 @@ package ariane_soc;
     TimerBase    = 64'h1800_0000,
     SPIBase      = 64'h2000_0000,
     EthernetDataBase = 64'h3000_0000,
+    EthernetMgmtBase = 64'h3800_0000,
     GPIOBase     = 64'h4000_0000,
-    DRAMBase     = 64'h8000_0000,
-    EthernetMgmtBase = 64'h3800_0000
+    DRAMBase     = 64'h8000_0000
   } soc_bus_start_t;
 
   localparam NrRegion = 1;
