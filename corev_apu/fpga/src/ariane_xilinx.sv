@@ -331,8 +331,8 @@ assign addr_map = '{
   '{ idx: ariane_soc::UART,     start_addr: ariane_soc::UARTBase,     end_addr: ariane_soc::UARTBase + ariane_soc::UARTLength         },
   '{ idx: ariane_soc::Timer,    start_addr: ariane_soc::TimerBase,    end_addr: ariane_soc::TimerBase + ariane_soc::TimerLength       },
   '{ idx: ariane_soc::SPI,      start_addr: ariane_soc::SPIBase,      end_addr: ariane_soc::SPIBase + ariane_soc::SPILength           },
-  '{ idx: ariane_soc::EthernetFIFO, start_addr: ariane_soc::EthernetFIFO, end_addr: ariane_soc::EthernetFIFOBase + ariane_soc::EthernetFIFOLength },
-  '{ idx: ariane_soc::EthernetMAC,  start_addr: ariane_soc::EthernetMAC , end_addr: ariane_soc::EthernetMACBase  + ariane_soc::EthernetMACLength  },
+  '{ idx: ariane_soc::EthernetData, start_addr: ariane_soc::EthernetData, end_addr: ariane_soc::EthernetDataBase + ariane_soc::EthernetDataLength },
+  '{ idx: ariane_soc::EthernetMgmt, start_addr: ariane_soc::EthernetMgmt, end_addr: ariane_soc::EthernetMgmtBase + ariane_soc::EthernetMgmtLength },
   '{ idx: ariane_soc::GPIO,     start_addr: ariane_soc::GPIOBase,     end_addr: ariane_soc::GPIOBase + ariane_soc::GPIOLength         },
   '{ idx: ariane_soc::DRAM,     start_addr: ariane_soc::DRAMBase,     end_addr: ariane_soc::DRAMBase + ariane_soc::DRAMLength         }
 };
@@ -897,8 +897,8 @@ ariane_peripherals #(
     .spi          ( master[ariane_soc::SPI]      ),
     .gpio         ( master[ariane_soc::GPIO]     ),
     .eth_clk_i    ( eth_clk                      ),
-    .ethernet_mac ( master[ariane_soc::EthernetMAC] ),
-    .ethernet_fifo( master[ariane_soc::EthernetFIFO] ),
+    .ethernet_data ( master[ariane_soc::EthernetMgmt] ),
+    .ethernet_mgmt ( master[ariane_soc::EthernetData] ),
     .timer        ( master[ariane_soc::Timer]    ),
     .irq_o        ( irq                          ),
     .rx_i         ( rx                           ),

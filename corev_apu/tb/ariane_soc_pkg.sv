@@ -22,14 +22,14 @@ package ariane_soc;
   typedef enum int unsigned {
     DRAM     = 0,
     GPIO     = 1,
-    EthernetFIFO = 2,
+    EthernetData = 2,
     SPI      = 3,
     Timer    = 4,
     UART     = 5,
     PLIC     = 6,
     CLINT    = 7,
     ROM      = 8,
-    EthernetMAC = 9,
+    EthernetMgmt = 9,
     Debug    = 10
   } axi_slaves_t;
 
@@ -43,8 +43,8 @@ package ariane_soc;
   localparam logic[63:0] UARTLength     = 64'h1000;
   localparam logic[63:0] TimerLength    = 64'h1000;
   localparam logic[63:0] SPILength      = 64'h800000;
-  localparam logic[63:0] EthernetMACLength  = 64'h40000;
-  localparam logic[63:0] EthernetFIFOLength = 64'h80;
+  localparam logic[63:0] EthernetDataLength = 64'h40000;
+  localparam logic[63:0] EthernetMgmtLength = 64'h80;
   localparam logic[63:0] GPIOLength     = 64'h1000;
 `ifdef NEXYS_VIDEO
   localparam logic[63:0] DRAMLength     = 64'h20000000; // 512MByte of DDR on Nexys video board
@@ -63,10 +63,10 @@ package ariane_soc;
     UARTBase     = 64'h1000_0000,
     TimerBase    = 64'h1800_0000,
     SPIBase      = 64'h2000_0000,
-    EthernetFIFOBase = 64'h3000_0000,
+    EthernetDataBase = 64'h3000_0000,
     GPIOBase     = 64'h4000_0000,
     DRAMBase     = 64'h8000_0000,
-    EthernetMACBase = 64'h3800_0000
+    EthernetMgmtBase = 64'h3800_0000
   } soc_bus_start_t;
 
   localparam NrRegion = 1;
