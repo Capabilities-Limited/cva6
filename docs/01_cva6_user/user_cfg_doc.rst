@@ -268,8 +268,11 @@ The repository was seeing frequent updates, so details are likely to change.
      - ``int unsigned``
      - Instruction cache size (in bytes)
      - Both cv32a65x and cv64 built and ran with a range of ICacheSizes.
-         .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv32a65x.png
-           :width: 800
+
+       .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv32a65x.png
+         :width: 400
 
    * - ``IcacheSetAssoc``
      - ``int unsigned``
