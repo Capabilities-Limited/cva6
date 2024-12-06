@@ -208,7 +208,7 @@ For example, 123 in decimal = 0x7B in hexadecimal = 0x123 in binary-coded decima
 
     The example coprocessor defines instructions for both the custom 0 and custom 1 major opcodes.  Using a standard R-type format, each of these allows 1024 distinct instructions to be defined using the 7-bit funct7 field and the 3-bit funct3 field.
 
-    .. image:: rtype_format.png
+    .. image:: images/rtype_format.png
       :width: 400
       :alt: Rtype RISC-V instruction format
 
