@@ -267,22 +267,32 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``IcacheByteSize``
      - ``int unsigned``
      - Instruction cache size (in bytes)
-     - Both cv32a65x and cv64 built and ran with a range of ICacheSizes.
+     - Both cv32 and cv64 built and ran with a range of ICacheSizes. Non-power-of-two sizes behave like the next biggest power-of-two. It's unknown why larger than 2048 slows down on cv64 for Dhrystone.
 
        .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv32a65x.png
          :width: 400
-       .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv32a65x.png
+       .. image:: images/Cycles_vs_Instruction_Cache_Size_in_cv64a6_imafdc_sv39.png
          :width: 400
 
    * - ``IcacheSetAssoc``
      - ``int unsigned``
      - Instruction cache associativity (number of ways)
-     - 
+     - Both cv32 and cv64 built and ran with a range of ICacheSizes. Non-power-of-two sizes appear to work as expected.
+
+       .. image:: images/Cycles_vs_Instruction_Cache_Set_Associativity_in_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Instruction_Cache_Associativity_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``IcacheLineWidth``
      - ``int unsigned``
      - Instruction cache line width
-     - 
+     - Instruction cache line width was parameterisable in both cv32 and cv64 with surprising improvements of performance for Dhrystone, likely because of spatial locality of instructions and a very small code footprint. The default line width is 128 bytes, which is slightly larger than usual, and 64 did not build for cv32, but did build for cv64.
+
+       .. image:: images/Cycles_vs_Instruction_Cache_Line_Width_in_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Instruction_Cache_Line_Width_in_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``DCacheType``
      - ``cache_type_t``
