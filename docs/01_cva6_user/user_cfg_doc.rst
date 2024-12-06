@@ -297,27 +297,45 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``DCacheType``
      - ``cache_type_t``
      - Cache Type
-     - 
+     - There are three options; writethrough, writeback, and high performance, which is capabale of reordering. Cv64 didn't compile with the high-performance option. Writeback is likely slower due to blocking on writes until the line is filled, while the out-of-order cache can fill for a write while still servicing reads.
+
+       .. image:: images/Cycles_vs_Data_Cache_Type_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Data_Cache_Type_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``DcacheIdWidth``
      - ``int unsigned``
      - Data cache ID
-     - 
+     - Both cv32 and cv64 built with an ID of 2 rather than 1, but performance was unchanged. We did not determine the function of the cache ID.
 
    * - ``DcacheByteSize``
      - ``int unsigned``
      - Data cache size (in bytes)
-     - 
+     - A wide range of data cache sizes built and ran Dhrystone, but Dhrystone performance did not appear to be sensitive to data cache size.
+
+       .. image:: images/Cycles_vs_Data_Cache_Byte_Size_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Data_Cache_Byte_Size_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``DcacheSetAssoc``
      - ``int unsigned``
      - Data cache associativity (number of ways)
-     - 
+     - Data cache associativity was parameterisable to any value we tried.  As cv64 had a 32KiB cache by default, and 8-way associative, performance did not meaningfully change with associativity changes.
+
+       .. image:: images/Cycles_vs_Data_Cache_Assosciativity_cv32a65x.png
+         :width: 400
 
    * - ``DcacheLineWidth``
      - ``int unsigned``
      - Data cache line width
-     - 
+     - Both cv32 and cv64 built with a range of data cache line widths, though cv64 did not build with 64-byte data cache lines.
+
+       .. image:: images/Cycles_vs_Data_Cache_Line_Width_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Data_Cache_Line_Width_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``DataUserEn``
      - ``int unsigned``
