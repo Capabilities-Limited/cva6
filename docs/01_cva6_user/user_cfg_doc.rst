@@ -47,7 +47,7 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``RVC``
      - ``bit``
      - Compress RISC-V extension
-     - cv64 built without compressed instrucitons, but Dhrystone failed to run, as it still used compressed instructions.
+     - cv64 built without compressed instructions, but Dhrystone failed to run, as it still used compressed instructions.
 
    * - ``RVH``
      - ``bit``
@@ -82,12 +82,12 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``RVF``
      - ``bit``
      - Floating Point
-     - cv64 built and ran without RVF.  Performance was equivelant for Dhrystone, so no performance cost for enabling floating point.
+     - cv64 built and ran without RVF.  Performance was equivalant for Dhrystone, so no performance cost for enabling floating point.
 
    * - ``RVD``
      - ``bit``
      - Floating Point
-     - cv64 built and ran without RVD. Performance was equivelant for Dhrystone.  RVF is required for RVD; RVD didn't build with RVD disabled.
+     - cv64 built and ran without RVD. Performance was equivalant for Dhrystone.  RVF is required for RVD; RVD didn't build with RVD disabled.
 
    * - ``XF16``
      - ``bit``
@@ -112,7 +112,7 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``PerfCounterEn``
      - ``bit``
      - Perf counters
-     - rv32 and rv64 built and ran without PerfCounterEn, and got equivelant performance.
+     - rv32 and rv64 built and ran without PerfCounterEn, and got equivalant performance.
 
    * - ``MmuPresent``
      - ``bit``
@@ -297,7 +297,7 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``DCacheType``
      - ``cache_type_t``
      - Cache Type
-     - There are three options; writethrough, writeback, and high performance, which is capabale of reordering. Cv64 didn't compile with the high-performance option. Writeback is likely slower due to blocking on writes until the line is filled, while the out-of-order cache can fill for a write while still servicing reads.
+     - There are three options; writethrough, writeback, and high performance, which is capable of reordering. Cv64 didn't compile with the high-performance option. Writeback is likely slower due to blocking on writes until the line is filled, while the out-of-order cache can fill for a write while still servicing reads.
 
        .. image:: images/Cycles_vs_Data_Cache_Type_cv32a65x.png
          :width: 400
@@ -340,7 +340,7 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``DataUserEn``
      - ``int unsigned``
      - User field on data bus enable
-     - cv32 built and ran with this changesd from 1 to 0.
+     - cv32 built and ran with this changed from 1 to 0.
 
    * - ``WtDcacheWbufDepth``
      - ``int unsigned``
@@ -435,7 +435,7 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``BTBEntries``
      - ``int unsigned``
      - Branch target buffer entries
-     - This parameter had nearly no effect in either cv32 or cv64 with Dhrystone.  The default for cv32 is 0; we didn't yet investigate what this means, but there was no improvement from changing to 4.  cv64 has 32, but changing it to 2 also did not chnange performance.  We might assume for now that Dhrystone uses only direct jumps and returns, and therefore does not exercise the BTB at all.
+     - This parameter had nearly no effect in either cv32 or cv64 with Dhrystone.  The default for cv32 is 0; we didn't yet investigate what this means, but there was no improvement from changing to 4.  cv64 has 32, but changing it to 2 also did not change performance.  We might assume for now that Dhrystone uses only direct jumps and returns, and therefore does not exercise the BTB at all.
 
    * - ``BHTEntries``
      - ``int unsigned``
