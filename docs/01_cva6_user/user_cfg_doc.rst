@@ -340,17 +340,22 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``DataUserEn``
      - ``int unsigned``
      - User field on data bus enable
-     - 
+     - cv32 built and ran with this changesd from 1 to 0.
 
    * - ``WtDcacheWbufDepth``
      - ``int unsigned``
      - Write-through data cache write buffer depth
-     - 
+     - cv32 did not build with 16-entry cache.  Also, performance was affected by changing cv32 from 8 to 4 despite the cache type for cv32 being HPDCACHE (High-performance Data Cache) by default.
+
+       .. image:: images/Cycles_vs_Data_Cache_Write_Buffer_Depth_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Data_Cache_Write_Buffer_Depth_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``FetchUserEn``
      - ``int unsigned``
      - User field on fetch bus enable
-     - 
+     - cv64 built with this turned off.  Perforformance was not affected.
 
    * - ``FetchUserWidth``
      - ``int unsigned``
@@ -365,74 +370,99 @@ The repository was seeing frequent updates, so details are likely to change.
    * - ``TechnoCut``
      - ``bit``
      - Is Techno Cut instanciated
-     - 
+     - Turning this from off to on for cv64 worked and ran Dhrystone, but did not change performance.
 
    * - ``SuperscalarEn``
      - ``bit``
      - Enable superscalar* with 2 issue ports and 2 commit ports.
-     - 
+     - cv32a65x (called cv32 here) has this on by default, and cv64a6_imafdc_sv39 (called cv64 here) has this off by default. SuperscalarEn doesn't currently work in conjunction with floating point extensions (F, D), so I turned off CVA6ConfigRVF for cv64 and was able to enable SuperscalarEn to test that 64-bit superscalar is possible and achieves the expected performance, which is a 17\% decrease in cycles in Dhrystone.
+
+       .. image:: images/Cycles_vs_Superscalar_Enable_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Superscalar_Enable_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``NrCommitPorts``
      - ``int unsigned``
      - Number of commit ports. Forced to 2 if SuperscalarEn.
-     - 
+     - This parameter had no effect on superscalar cv32, as suggested in the note in the previous cell.
 
    * - ``NrLoadPipeRegs``
      - ``int unsigned``
      - Load cycle latency number
-     - 
+     - This was parametrisable for both cv32 and cv64 in the options that we tried.  The latency for cv32 was 0 by default, and the latency for cv64 was 1 by default.
+
+       .. image:: images/Cycles_vs_Number_of_Load_Pipe_Registers_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Number_of_Load_Pipe_Registers_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``NrStorePipeRegs``
      - ``int unsigned``
      - Store cycle latency number
-     - 
+     - The build succeeds when this option is set from 0 to 1, but the benchmark does not run.  There seems to have been a bug.
 
    * - ``NrScoreboardEntries``
      - ``int unsigned``
      - Scoreboard length
-     - 
+     - This parameter only works for powers-of-two.  Other values build, but we seem to lock up at run time. We seem to reach full performance at 8 entries.
+
+       .. image:: images/Cycles_vs_Number_of_Scoreboard_Entries_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Number_of_Scoreboard_Entries_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``NrLoadBufEntries``
      - ``int unsigned``
      - Load buffer entry buffer
-     - 
+     - Dhrystone seemed almost completely insensitive to this number.  The superscalar cv32 lost 0.37% performance when it was reduced from 2 to 1, but single-issue cv64 did not lose any performance with one entry.  Also, larger numbers of entries did not help cv64, and did not build on cv32.
 
    * - ``MaxOutstandingStores``
      - ``int unsigned``
      - Maximum number of outstanding stores
-     - 
+     - This parameter did not affect performance in cv32 in the simulator setup.  We might assume that the simplified memory for simulation might not expose the effects of high-lantency memory.
 
    * - ``RASDepth``
      - ``int unsigned``
      - Return address stack depth
-     - 
+     - This operand built and ran with a few different options for cv32 and cv64.  The default parameter is 2, but even Dhrystone benefits from at least 3.  Maybe timing or area prevents a more generous allocation?
+
+       .. image:: images/Cycles_vs_Return_Address_Stack_Depth_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Return_Address_Stack_Depth_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``BTBEntries``
      - ``int unsigned``
      - Branch target buffer entries
-     - 
+     - This parameter had nearly no effect in either cv32 or cv64 with Dhrystone.  The default for cv32 is 0; we didn't yet investigate what this means, but there was no improvement from changing to 4.  cv64 has 32, but changing it to 2 also did not chnange performance.  We might assume for now that Dhrystone uses only direct jumps and returns, and therefore does not exercise the BTB at all.
 
    * - ``BHTEntries``
      - ``int unsigned``
      - Branch history entries
-     - 
+     - This was a very flexible parameter, where even non-power-of-two values appeared to give some benefit.  cv32 had 32 entries by default, and cv64 had 128.  Dhrystone consistently showed benefit from increasing the size of this table; bigger benchmarks would likely be even more sensitive.
+
+       .. image:: images/Cycles_vs_Branch_History_Table_Entries_in_cv32a65x.png
+         :width: 400
+       .. image:: images/Cycles_vs_Branch_History_Table_Entries_in_cv64a6_imafdc_sv39.png
+         :width: 400
 
    * - ``InstrTlbEntries``
      - ``int unsigned``
      - MMU instruction TLB entries
-     - 
+     - Parameters of 1 to 4 built and ran Dhrystone; performance didn't change, as virtual memory was not being used.
 
    * - ``DataTlbEntries``
      - ``int unsigned``
      - MMU data TLB entries
-     - 
+     - Parameters of 1 to 4 built and ran Dhrystone; performance didn't change, as virtual memory was not being used.
 
    * - ``UseSharedTlb``
      - ``bit unsigned``
      - MMU option to use shared TLB
-     - 
+     - cv32 uses this option, enabling the shared TLB (or "level 2" TLB), but cv64 does not, curiously.
 
    * - ``SharedTlbDepth``
      - ``int unsigned``
      - MMU depth of shared TLB
-     - 
+     - Both cv32 and cv64 are configured with a depth of 64, though "UseSharedTlb" is not enabled in cv64.
