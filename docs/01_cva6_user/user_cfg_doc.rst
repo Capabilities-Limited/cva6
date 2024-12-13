@@ -10,11 +10,11 @@
 
 .. _cva6_user_cfg_doc:
 
-These are notes on parameterising both the cv32a65x ("cv32") and th cv64a6_imafdc_sv39 ("cv64") configurations.
+These are notes on parameterising both the cv32a65x ("cv32") and the cv64a6_imafdc_sv39 ("cv64") configurations.
 For each parameter, we tested whether it could build with a change, and how performance
-changed in Dhrystone.
+was affected in Dhrystone.
 We tested the master branch of github.com/openhwgroup/cva6 from about 1 November 2024.
-The repository was seeing frequent updates, so details are likely to change.
+The repository was seeing frequent updates, so the current version is likely to be somewhat different from the snapshot in this study.
 
 .. list-table:: ``cva6_user_cfg_t`` parameters
    :header-rows: 1
