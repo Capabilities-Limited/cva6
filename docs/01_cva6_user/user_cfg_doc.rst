@@ -17,6 +17,7 @@ We tested the master branch of github.com/openhwgroup/cva6 from about 1 November
 The repository was seeing frequent updates, so the current version is likely to be somewhat different from the snapshot in this study.
 
 .. list-table:: ``cva6_user_cfg_t`` parameters
+   :widths: 10 10 12 28
    :header-rows: 1
 
    * - Name
