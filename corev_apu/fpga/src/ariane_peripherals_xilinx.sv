@@ -22,6 +22,7 @@ module ariane_peripherals #(
     parameter bit InclSPI      = 0,
     parameter bit InclXilinxEthernet  = 0,
     parameter bit InclLowriscEthernet = 0,
+    parameter bit InclXilinxDMA = 0,
     parameter bit InclGPIO     = 0,
     parameter bit InclTimer    = 1
 ) (
@@ -35,6 +36,8 @@ module ariane_peripherals #(
     AXI_BUS.Slave      ethernet_mgmt   ,
     AXI_BUS.Slave      ethernet_data   ,
     AXI_BUS.Slave      timer           ,
+    AXI_BUS.Master     ethernet_dma_sg ,
+    AXI_BUS.Master     ethernet_dma_mm2s,
     output logic [1:0] irq_o           ,
     // UART
     input  logic       rx_i            ,
@@ -69,7 +72,7 @@ module ariane_peripherals #(
     logic [ariane_soc::NumSources-1:0] irq_sources;
 
     // Unused interrupt sources
-    assign irq_sources[ariane_soc::NumSources-1:8] = '0;
+    assign irq_sources[ariane_soc::NumSources-1:9] = '0;
 
     REG_BUS #(
         .ADDR_WIDTH ( 32 ),
@@ -527,7 +530,7 @@ module ariane_peripherals #(
            .T(eth_mdio_oe)      // 3-state enable input, high=input, low=output
         );
 
-    end else begin
+    end else begin : gen_ethernet_tieoff
         // Tie off signals with no ethernet
         assign irq_sources [2] = 1'b0;
         assign ethernet_data.aw_ready = 1'b1;
@@ -543,6 +546,22 @@ module ariane_peripherals #(
         assign ethernet_data.r_resp = axi_pkg::RESP_SLVERR;
         assign ethernet_data.r_data = 'hdeadbeef;
         assign ethernet_data.r_last = 1'b1;
+    end
+
+    if (!InclXilinxEthernet || !InclXilinxDMA) begin : gen_dma_tieoff
+        // Tie off signals with no ethernet
+        //assign irq_sources [2] = 1'b0;
+        assign ethernet_dma_sg.aw_valid = 1'b0;
+        assign ethernet_dma_sg.ar_valid = 1'b0;
+        assign ethernet_dma_sg.w_valid = 1'b0;
+        assign ethernet_dma_sg.b_ready = 1'b1;
+        assign ethernet_dma_sg.r_ready = 1'b1;
+
+        assign ethernet_dma_mm2s.aw_valid = 1'b0;
+        assign ethernet_dma_mm2s.ar_valid = 1'b0;
+        assign ethernet_dma_mm2s.w_valid = 1'b0;
+        assign ethernet_dma_mm2s.b_ready = 1'b1;
+        assign ethernet_dma_mm2s.r_ready = 1'b1;
     end
 
     if (InclXilinxEthernet) begin : gen_axi_ethernet
@@ -744,65 +763,235 @@ module ariane_peripherals #(
             .m_axi_rready   ( s_axi_lite_ethernet_data_rready  )
         );
 
-        logic        mm2s_prmry_reset_out_n;
-        logic        fifo_axi_str_txd_tvalid;
-        logic        fifo_axi_str_txd_tready;
-        logic        fifo_axi_str_txd_tlast;
-        logic [3:0]  fifo_axi_str_txd_tkeep;
-        logic [31:0] fifo_axi_str_txd_tdata;
-        logic        fifo_mm2s_cntrl_reset_out_n;
-        logic        fifo_axi_str_txc_tvalid;
-        logic        fifo_axi_str_txc_tready;
-        logic        fifo_axi_str_txc_tlast;
-        logic [3:0]  fifo_axi_str_txc_tkeep;
-        logic [31:0] fifo_axi_str_txc_tdata;
-        logic        fifo_s2mm_prmry_reset_out_n;
-        logic        fifo_axi_str_rxd_tvalid;
-        logic        fifo_axi_str_rxd_tready;
-        logic        fifo_axi_str_rxd_tlast;
-        logic [3:0]  fifo_axi_str_rxd_tkeep;
-        logic [31:0] fifo_axi_str_rxd_tdata;
+        logic        eth_mm2s_prmry_reset_out_n;
+        logic        eth_axi_str_txd_tvalid;
+        logic        eth_axi_str_txd_tready;
+        logic        eth_axi_str_txd_tlast;
+        logic [3:0]  eth_axi_str_txd_tkeep;
+        logic [31:0] eth_axi_str_txd_tdata;
+        logic        eth_mm2s_cntrl_reset_out_n;
+        logic        eth_axi_str_txc_tvalid;
+        logic        eth_axi_str_txc_tready;
+        logic        eth_axi_str_txc_tlast;
+        logic [3:0]  eth_axi_str_txc_tkeep;
+        logic [31:0] eth_axi_str_txc_tdata;
+        logic        eth_s2mm_prmry_reset_out_n;
+        logic        eth_axi_str_rxd_tvalid;
+        logic        eth_axi_str_rxd_tready;
+        logic        eth_axi_str_rxd_tlast;
+        logic [3:0]  eth_axi_str_rxd_tkeep;
+        logic [31:0] eth_axi_str_rxd_tdata;
+        logic        eth_s2mm_cntrl_reset_out_n;
+        logic        eth_axi_str_rxc_tvalid;
+        logic        eth_axi_str_rxc_tready;
+        logic        eth_axi_str_rxc_tlast;
+        logic [3:0]  eth_axi_str_rxc_tkeep;
+        logic [31:0] eth_axi_str_rxc_tdata;
 
-        xlnx_axi_fifo (
-            .interrupt              ( irq_sources[7]                   ),
-            .s_axi_aclk             ( clk_i                            ),
-            .s_axi_aresetn          ( rst_ni                           ),
-            .s_axi_awaddr           ( s_axi_lite_ethernet_data_awaddr  ),
-            .s_axi_awvalid          ( s_axi_lite_ethernet_data_awvalid ),
-            .s_axi_awready          ( s_axi_lite_ethernet_data_awready ),
-            .s_axi_wdata            ( s_axi_lite_ethernet_data_wdata   ),
-            .s_axi_wstrb            ( s_axi_lite_ethernet_data_wstrb   ),
-            .s_axi_wvalid           ( s_axi_lite_ethernet_data_wvalid  ),
-            .s_axi_wready           ( s_axi_lite_ethernet_data_wready  ),
-            .s_axi_bresp            ( s_axi_lite_ethernet_data_bresp   ),
-            .s_axi_bvalid           ( s_axi_lite_ethernet_data_bvalid  ),
-            .s_axi_bready           ( s_axi_lite_ethernet_data_bready  ),
-            .s_axi_araddr           ( s_axi_lite_ethernet_data_araddr  ),
-            .s_axi_arvalid          ( s_axi_lite_ethernet_data_arvalid ),
-            .s_axi_arready          ( s_axi_lite_ethernet_data_arready ),
-            .s_axi_rdata            ( s_axi_lite_ethernet_data_rdata   ),
-            .s_axi_rresp            ( s_axi_lite_ethernet_data_rresp   ),
-            .s_axi_rvalid           ( s_axi_lite_ethernet_data_rvalid  ),
-            .s_axi_rready           ( s_axi_lite_ethernet_data_rready  ),
-            .mm2s_prmry_reset_out_n ( fifo_mm2s_prmry_reset_out_n      ),
-            .axi_str_txd_tvalid     ( fifo_axi_str_txd_tvalid          ),
-            .axi_str_txd_tready     ( fifo_axi_str_txd_tready          ),
-            .axi_str_txd_tlast      ( fifo_axi_str_txd_tlast           ),
-            .axi_str_txd_tkeep      ( fifo_axi_str_txd_tkeep           ),
-            .axi_str_txd_tdata      ( fifo_axi_str_txd_tdata           ),
-            .mm2s_cntrl_reset_out_n ( fifo_mm2s_cntrl_reset_out_n      ),
-            .axi_str_txc_tvalid     ( fifo_axi_str_txc_tvalid          ),
-            .axi_str_txc_tready     ( fifo_axi_str_txc_tready          ),
-            .axi_str_txc_tlast      ( fifo_axi_str_txc_tlast           ),
-            .axi_str_txc_tkeep      ( fifo_axi_str_txc_tkeep           ),
-            .axi_str_txc_tdata      ( fifo_axi_str_txc_tdata           ),
-            .s2mm_prmry_reset_out_n ( fifo_s2mm_prmry_reset_out_n      ),
-            .axi_str_rxd_tvalid     ( fifo_axi_str_rxd_tvalid          ),
-            .axi_str_rxd_tready     ( fifo_axi_str_rxd_tready          ),
-            .axi_str_rxd_tlast      ( fifo_axi_str_rxd_tlast           ),
-            .axi_str_rxd_tkeep      ( fifo_axi_str_rxd_tkeep           ),
-            .axi_str_rxd_tdata      ( fifo_axi_str_rxd_tdata           )
-        );
+        if (InclXilinxDMA) begin : gen_axi_dma
+            xlnx_axi_dma i_xlnx_axi_dma_ethernet (
+                .m_axi_mm2s_aclk          ( clk_i                            ),
+                .m_axi_s2mm_aclk          ( clk_i                            ),
+                .axi_resetn               ( rst_ni                           ),
+
+                // processor -> s_axi_lite
+                .s_axi_lite_awvalid       ( s_axi_lite_ethernet_data_awvalid ),
+                .s_axi_lite_awready       ( s_axi_lite_ethernet_data_awready ),
+                .s_axi_lite_awaddr        ( s_axi_lite_ethernet_data_awaddr  ),
+                .s_axi_lite_wvalid        ( s_axi_lite_ethernet_data_wvalid  ),
+                .s_axi_lite_wready        ( s_axi_lite_ethernet_data_wready  ),
+                .s_axi_lite_wdata         ( s_axi_lite_ethernet_data_wdata   ),
+                // s_axi_lite_ethernet_data_wstrb not connected: unsupported by DMA
+                .s_axi_lite_bresp         ( s_axi_lite_ethernet_data_bresp   ),
+                .s_axi_lite_bvalid        ( s_axi_lite_ethernet_data_bvalid  ),
+                .s_axi_lite_bready        ( s_axi_lite_ethernet_data_bready  ),
+                .s_axi_lite_arvalid       ( s_axi_lite_ethernet_data_arvalid ),
+                .s_axi_lite_arready       ( s_axi_lite_ethernet_data_arready ),
+                .s_axi_lite_araddr        ( s_axi_lite_ethernet_data_araddr  ),
+                .s_axi_lite_rvalid        ( s_axi_lite_ethernet_data_rvalid  ),
+                .s_axi_lite_rready        ( s_axi_lite_ethernet_data_rready  ),
+                .s_axi_lite_rdata         ( s_axi_lite_ethernet_data_rdata   ),
+                .s_axi_lite_rresp         ( s_axi_lite_ethernet_data_rresp   ),
+
+                // m_axi_sg -> DRAM
+                .m_axi_sg_awaddr          ( ethernet_dma_sg.aw_addr    ),
+                .m_axi_sg_awlen           ( ethernet_dma_sg.aw_len     ),
+                .m_axi_sg_awsize          ( ethernet_dma_sg.aw_size    ),
+                .m_axi_sg_awburst         ( ethernet_dma_sg.aw_burst   ),
+                .m_axi_sg_awprot          ( ethernet_dma_sg.aw_prot    ),
+                .m_axi_sg_awcache         ( ethernet_dma_sg.aw_cache   ),
+                .m_axi_sg_awvalid         ( ethernet_dma_sg.aw_valid   ),
+                .m_axi_sg_awready         ( ethernet_dma_sg.aw_ready   ),
+                .m_axi_sg_wdata           ( ethernet_dma_sg.w_data     ),
+                .m_axi_sg_wstrb           ( ethernet_dma_sg.w_strb     ),
+                .m_axi_sg_wlast           ( ethernet_dma_sg.w_last     ),
+                .m_axi_sg_wvalid          ( ethernet_dma_sg.w_valid    ),
+                .m_axi_sg_wready          ( ethernet_dma_sg.w_ready    ),
+                .m_axi_sg_bresp           ( ethernet_dma_sg.b_resp     ),
+                .m_axi_sg_bvalid          ( ethernet_dma_sg.b_valid    ),
+                .m_axi_sg_bready          ( ethernet_dma_sg.b_ready    ),
+                .m_axi_sg_araddr          ( ethernet_dma_sg.ar_addr    ),
+                .m_axi_sg_arlen           ( ethernet_dma_sg.ar_len     ),
+                .m_axi_sg_arsize          ( ethernet_dma_sg.ar_size    ),
+                .m_axi_sg_arburst         ( ethernet_dma_sg.ar_burst   ),
+                .m_axi_sg_arprot          ( ethernet_dma_sg.ar_prot    ),
+                .m_axi_sg_arcache         ( ethernet_dma_sg.ar_cache   ),
+                .m_axi_sg_arvalid         ( ethernet_dma_sg.ar_valid   ),
+                .m_axi_sg_arready         ( ethernet_dma_sg.ar_ready   ),
+                .m_axi_sg_rdata           ( ethernet_dma_sg.r_data     ),
+                .m_axi_sg_rresp           ( ethernet_dma_sg.r_resp     ),
+                .m_axi_sg_rlast           ( ethernet_dma_sg.r_last     ),
+                .m_axi_sg_rvalid          ( ethernet_dma_sg.r_valid    ),
+                .m_axi_sg_rready          ( ethernet_dma_sg.r_ready    ),
+
+                // m_axi_mm2s -> DRAM
+                .m_axi_mm2s_araddr        ( ethernet_dma_mm2s.ar_addr  ),
+                .m_axi_mm2s_arlen         ( ethernet_dma_mm2s.ar_len   ),
+                .m_axi_mm2s_arsize        ( ethernet_dma_mm2s.ar_size  ),
+                .m_axi_mm2s_arburst       ( ethernet_dma_mm2s.ar_burst ),
+                .m_axi_mm2s_arprot        ( ethernet_dma_mm2s.ar_prot  ),
+                .m_axi_mm2s_arcache       ( ethernet_dma_mm2s.ar_cache ),
+                .m_axi_mm2s_arvalid       ( ethernet_dma_mm2s.ar_valid ),
+                .m_axi_mm2s_arready       ( ethernet_dma_mm2s.ar_ready ),
+                .m_axi_mm2s_rdata         ( ethernet_dma_mm2s.r_data   ),
+                .m_axi_mm2s_rresp         ( ethernet_dma_mm2s.r_resp   ),
+                .m_axi_mm2s_rlast         ( ethernet_dma_mm2s.r_last   ),
+                .m_axi_mm2s_rvalid        ( ethernet_dma_mm2s.r_valid  ),
+                .m_axi_mm2s_rready        ( ethernet_dma_mm2s.r_ready  ),
+
+                .mm2s_prmry_reset_out_n   ( eth_mm2s_prmry_reset_out_n ),
+
+                // m_axis_mm2s -> eth/s_axis_txd
+                .m_axis_mm2s_tdata        ( eth_axi_str_txd_tdata  ),
+                .m_axis_mm2s_tkeep        ( eth_axi_str_txd_tkeep  ),
+                .m_axis_mm2s_tvalid       ( eth_axi_str_txd_tvalid ),
+                .m_axis_mm2s_tready       ( eth_axi_str_txd_tready ),
+                .m_axis_mm2s_tlast        ( eth_axi_str_txd_tlast  ),
+
+                .mm2s_cntrl_reset_out_n   ( eth_mm2s_cntrl_reset_out_n ),
+
+                // m_axis_mm2s_cntrl -> eth/s_axis_txc
+                .m_axis_mm2s_cntrl_tdata  ( eth_axi_str_txc_tdata  ),
+                .m_axis_mm2s_cntrl_tkeep  ( eth_axi_str_txc_tkeep  ),
+                .m_axis_mm2s_cntrl_tvalid ( eth_axi_str_txc_tvalid ),
+                .m_axis_mm2s_cntrl_tready ( eth_axi_str_txc_tready ),
+                .m_axis_mm2s_cntrl_tlast  ( eth_axi_str_txc_tlast  ),
+
+                // m_axi_s2mm -> DRAM
+                .m_axi_s2mm_awaddr        ( ethernet_dma_mm2s.aw_addr  ),
+                .m_axi_s2mm_awlen         ( ethernet_dma_mm2s.aw_len   ),
+                .m_axi_s2mm_awsize        ( ethernet_dma_mm2s.aw_size  ),
+                .m_axi_s2mm_awburst       ( ethernet_dma_mm2s.aw_burst ),
+                .m_axi_s2mm_awprot        ( ethernet_dma_mm2s.aw_prot  ),
+                .m_axi_s2mm_awcache       ( ethernet_dma_mm2s.aw_cache ),
+                .m_axi_s2mm_awvalid       ( ethernet_dma_mm2s.aw_valid ),
+                .m_axi_s2mm_awready       ( ethernet_dma_mm2s.aw_ready ),
+                .m_axi_s2mm_wdata         ( ethernet_dma_mm2s.w_data   ),
+                .m_axi_s2mm_wstrb         ( ethernet_dma_mm2s.w_strb   ),
+                .m_axi_s2mm_wlast         ( ethernet_dma_mm2s.w_last   ),
+                .m_axi_s2mm_wvalid        ( ethernet_dma_mm2s.w_valid  ),
+                .m_axi_s2mm_wready        ( ethernet_dma_mm2s.w_ready  ),
+                .m_axi_s2mm_bresp         ( ethernet_dma_mm2s.b_resp   ),
+                .m_axi_s2mm_bvalid        ( ethernet_dma_mm2s.b_valid  ),
+                .m_axi_s2mm_bready        ( ethernet_dma_mm2s.b_ready  ),
+
+                .s2mm_prmry_reset_out_n   ( eth_s2mm_prmry_reset_out_n ),
+
+                // eth/m_axis_rxd -> s_axis_s2mm_tdata
+                .s_axis_s2mm_tdata        ( eth_axi_str_rxd_tdata  ),
+                .s_axis_s2mm_tkeep        ( eth_axi_str_rxd_tkeep  ),
+                .s_axis_s2mm_tvalid       ( eth_axi_str_rxd_tvalid ),
+                .s_axis_s2mm_tready       ( eth_axi_str_rxd_tready ),
+                .s_axis_s2mm_tlast        ( eth_axi_str_rxd_tlast  ),
+
+                .s2mm_sts_reset_out_n     ( eth_s2mm_cntrl_reset_out_n ),
+
+                // eth/m_axis_rxc -> s_axis_s2mm_sts
+                .s_axis_s2mm_sts_tdata    ( eth_axi_str_rxc_tdata  ),
+                .s_axis_s2mm_sts_tkeep    ( eth_axi_str_rxc_tkeep  ),
+                .s_axis_s2mm_sts_tvalid   ( eth_axi_str_rxc_tvalid ),
+                .s_axis_s2mm_sts_tready   ( eth_axi_str_rxc_tready ),
+                .s_axis_s2mm_sts_tlast    ( eth_axi_str_rxc_tlast  ),
+
+                .mm2s_introut             (irq_sources[7]),
+                .s2mm_introut             (irq_sources[8]),
+                .axi_dma_tstvec           ()
+            );
+
+            // Tie off signals unused by the DMA master ports
+            assign ethernet_dma_sg.aw_id       = '0;
+            assign ethernet_dma_sg.aw_lock     = '0;
+            assign ethernet_dma_sg.aw_region   = '0;
+            assign ethernet_dma_sg.aw_qos      = '0;
+            assign ethernet_dma_sg.b_id        = '0;
+            assign ethernet_dma_sg.ar_id       = '0;
+            assign ethernet_dma_sg.ar_lock     = '0;
+            assign ethernet_dma_sg.ar_region   = '0;
+            assign ethernet_dma_sg.ar_qos      = '0;
+            assign ethernet_dma_sg.r_id        = '0;
+
+            assign ethernet_dma_mm2s.aw_id     = '0;
+            assign ethernet_dma_mm2s.aw_lock   = '0;
+            assign ethernet_dma_mm2s.aw_region = '0;
+            assign ethernet_dma_mm2s.aw_qos    = '0;
+            assign ethernet_dma_mm2s.b_id      = '0;
+            assign ethernet_dma_mm2s.ar_id     = '0;
+            assign ethernet_dma_mm2s.ar_lock   = '0;
+            assign ethernet_dma_mm2s.ar_region = '0;
+            assign ethernet_dma_mm2s.ar_qos    = '0;
+            assign ethernet_dma_mm2s.r_id      = '0;
+
+        end else begin : gen_axi_fifo
+            xlnx_axi_fifo (
+                .interrupt              ( irq_sources[7]                   ),
+                .s_axi_aclk             ( clk_i                            ),
+                .s_axi_aresetn          ( rst_ni                           ),
+                .s_axi_awaddr           ( s_axi_lite_ethernet_data_awaddr  ),
+                .s_axi_awvalid          ( s_axi_lite_ethernet_data_awvalid ),
+                .s_axi_awready          ( s_axi_lite_ethernet_data_awready ),
+                .s_axi_wdata            ( s_axi_lite_ethernet_data_wdata   ),
+                .s_axi_wstrb            ( s_axi_lite_ethernet_data_wstrb   ),
+                .s_axi_wvalid           ( s_axi_lite_ethernet_data_wvalid  ),
+                .s_axi_wready           ( s_axi_lite_ethernet_data_wready  ),
+                .s_axi_bresp            ( s_axi_lite_ethernet_data_bresp   ),
+                .s_axi_bvalid           ( s_axi_lite_ethernet_data_bvalid  ),
+                .s_axi_bready           ( s_axi_lite_ethernet_data_bready  ),
+                .s_axi_araddr           ( s_axi_lite_ethernet_data_araddr  ),
+                .s_axi_arvalid          ( s_axi_lite_ethernet_data_arvalid ),
+                .s_axi_arready          ( s_axi_lite_ethernet_data_arready ),
+                .s_axi_rdata            ( s_axi_lite_ethernet_data_rdata   ),
+                .s_axi_rresp            ( s_axi_lite_ethernet_data_rresp   ),
+                .s_axi_rvalid           ( s_axi_lite_ethernet_data_rvalid  ),
+                .s_axi_rready           ( s_axi_lite_ethernet_data_rready  ),
+                .mm2s_prmry_reset_out_n ( eth_mm2s_prmry_reset_out_n      ),
+                .axi_str_txd_tvalid     ( eth_axi_str_txd_tvalid          ),
+                .axi_str_txd_tready     ( eth_axi_str_txd_tready          ),
+                .axi_str_txd_tlast      ( eth_axi_str_txd_tlast           ),
+                .axi_str_txd_tkeep      ( eth_axi_str_txd_tkeep           ),
+                .axi_str_txd_tdata      ( eth_axi_str_txd_tdata           ),
+                .mm2s_cntrl_reset_out_n ( eth_mm2s_cntrl_reset_out_n      ),
+                .axi_str_txc_tvalid     ( eth_axi_str_txc_tvalid          ),
+                .axi_str_txc_tready     ( eth_axi_str_txc_tready          ),
+                .axi_str_txc_tlast      ( eth_axi_str_txc_tlast           ),
+                .axi_str_txc_tkeep      ( eth_axi_str_txc_tkeep           ),
+                .axi_str_txc_tdata      ( eth_axi_str_txc_tdata           ),
+                .s2mm_prmry_reset_out_n ( eth_s2mm_prmry_reset_out_n      ),
+                .axi_str_rxd_tvalid     ( eth_axi_str_rxd_tvalid          ),
+                .axi_str_rxd_tready     ( eth_axi_str_rxd_tready          ),
+                .axi_str_rxd_tlast      ( eth_axi_str_rxd_tlast           ),
+                .axi_str_rxd_tkeep      ( eth_axi_str_rxd_tkeep           ),
+                .axi_str_rxd_tdata      ( eth_axi_str_rxd_tdata           )
+            );
+
+            // The axi_ethernet specification gives the case of connecting to the FIFO
+            // as an example, specifying that the rxc signals should be left open,
+            // except the ready which is tied high.
+            assign eth_axi_str_rxc_tready = 1'b1;
+
+            assign irq_sources[8] = 1'b0;
+
+            assign eth_s2mm_cntrl_reset_out_n = rst_ni;
+        end
 
         // Convert the incoming ethernet MAC master down to 32bits
         logic [31:0] s_axi_ethernet_mgmt_awaddr;
@@ -1012,10 +1201,10 @@ module ariane_peripherals #(
             // redundant with the "interrupt" wire?
             .mac_irq                ( /* NC */                          ),
             .axis_clk               ( clk_i                             ),
-            .axi_txd_arstn          ( fifo_mm2s_prmry_reset_out_n       ),
-            .axi_txc_arstn          ( fifo_mm2s_cntrl_reset_out_n       ),
-            .axi_rxd_arstn          ( fifo_s2mm_prmry_reset_out_n       ),
-            .axi_rxs_arstn          ( rst_ni                            ),
+            .axi_txd_arstn          ( eth_mm2s_prmry_reset_out_n       ),
+            .axi_txc_arstn          ( eth_mm2s_cntrl_reset_out_n       ),
+            .axi_rxd_arstn          ( eth_s2mm_prmry_reset_out_n       ),
+            .axi_rxs_arstn          ( eth_s2mm_cntrl_reset_out_n       ),
             .interrupt              ( irq_sources[2]                    ),
             .gtx_clk                ( phy_tx_clk_i                      ),
             .phy_rst_n              ( eth_rst_n                         ),
@@ -1040,28 +1229,26 @@ module ariane_peripherals #(
             .s_axi_wready           ( s_axi_lite_ethernet_mgmt_wready   ),
             .s_axi_wstrb            ( s_axi_lite_ethernet_mgmt_wstrb    ),
             .s_axi_wvalid           ( s_axi_lite_ethernet_mgmt_wvalid   ),
-            .s_axis_txc_tdata       ( fifo_axi_str_txc_tdata            ),
-            .s_axis_txc_tkeep       ( fifo_axi_str_txc_tkeep            ),
-            .s_axis_txc_tlast       ( fifo_axi_str_txc_tlast            ),
-            .s_axis_txc_tready      ( fifo_axi_str_txc_tready           ),
-            .s_axis_txc_tvalid      ( fifo_axi_str_txc_tvalid           ),
-            .s_axis_txd_tdata       ( fifo_axi_str_txd_tdata            ),
-            .s_axis_txd_tkeep       ( fifo_axi_str_txd_tkeep            ),
-            .s_axis_txd_tlast       ( fifo_axi_str_txd_tlast            ),
-            .s_axis_txd_tready      ( fifo_axi_str_txd_tready           ),
-            .s_axis_txd_tvalid      ( fifo_axi_str_txd_tvalid           ),
-            .m_axis_rxd_tdata       ( fifo_axi_str_rxd_tdata            ),
-            .m_axis_rxd_tkeep       ( fifo_axi_str_rxd_tkeep            ),
-            .m_axis_rxd_tlast       ( fifo_axi_str_rxd_tlast            ),
-            .m_axis_rxd_tready      ( fifo_axi_str_rxd_tready           ),
-            .m_axis_rxd_tvalid      ( fifo_axi_str_rxd_tvalid           ),
-            // The specification gives the case of connecting to the FIFO
-            // as an example, specifying these connections
-            .m_axis_rxs_tdata       ( /* NC */                          ),
-            .m_axis_rxs_tkeep       ( /* NC */                          ),
-            .m_axis_rxs_tlast       ( /* NC */                          ),
-            .m_axis_rxs_tready      ( 1'b1                              ),
-            .m_axis_rxs_tvalid      ( /* NC */                          ),
+            .s_axis_txc_tdata       ( eth_axi_str_txc_tdata             ),
+            .s_axis_txc_tkeep       ( eth_axi_str_txc_tkeep             ),
+            .s_axis_txc_tlast       ( eth_axi_str_txc_tlast             ),
+            .s_axis_txc_tready      ( eth_axi_str_txc_tready            ),
+            .s_axis_txc_tvalid      ( eth_axi_str_txc_tvalid            ),
+            .s_axis_txd_tdata       ( eth_axi_str_txd_tdata             ),
+            .s_axis_txd_tkeep       ( eth_axi_str_txd_tkeep             ),
+            .s_axis_txd_tlast       ( eth_axi_str_txd_tlast             ),
+            .s_axis_txd_tready      ( eth_axi_str_txd_tready            ),
+            .s_axis_txd_tvalid      ( eth_axi_str_txd_tvalid            ),
+            .m_axis_rxd_tdata       ( eth_axi_str_rxd_tdata             ),
+            .m_axis_rxd_tkeep       ( eth_axi_str_rxd_tkeep             ),
+            .m_axis_rxd_tlast       ( eth_axi_str_rxd_tlast             ),
+            .m_axis_rxd_tready      ( eth_axi_str_rxd_tready            ),
+            .m_axis_rxd_tvalid      ( eth_axi_str_rxd_tvalid            ),
+            .m_axis_rxs_tdata       ( eth_axi_str_rxc_tdata             ),
+            .m_axis_rxs_tkeep       ( eth_axi_str_rxc_tkeep             ),
+            .m_axis_rxs_tlast       ( eth_axi_str_rxc_tlast             ),
+            .m_axis_rxs_tready      ( eth_axi_str_rxc_tready            ),
+            .m_axis_rxs_tvalid      ( eth_axi_str_rxc_tvalid            ),
             .rgmii_rd               ( eth_rxd                           ),
             .rgmii_rx_ctl           ( eth_rxctl                         ),
             .rgmii_rxc              ( eth_rxck                          ),

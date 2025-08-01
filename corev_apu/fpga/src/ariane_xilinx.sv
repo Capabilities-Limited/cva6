@@ -211,11 +211,11 @@ localparam NumWords = (24 * 1024 * 1024) / 8;
   
 // WARNING: If NBSlave is modified, Xilinx's IPs under fpga/xilinx need to be updated with the new AXI id width and regenerated.
 // Otherwise reads and writes to DRAM may be returned to the wrong master and the crossbar will freeze. See issue #568.
-localparam NBSlave = 2; // debug, ariane
+localparam NBSlave = 4; // debug, ariane, axi_dma_sg, axi_dma_s2mm
 localparam AxiAddrWidth = 64;
 localparam AxiDataWidth = 64;
 localparam AxiIdWidthMaster = 4;
-localparam AxiIdWidthSlaves = AxiIdWidthMaster + $clog2(NBSlave); // 5
+localparam AxiIdWidthSlaves = AxiIdWidthMaster + $clog2(NBSlave); // 6
 localparam AxiUserWidth = CVA6Cfg.AxiUserWidth;
 
 `AXI_TYPEDEF_ALL(axi_slave,
@@ -870,22 +870,27 @@ ariane_peripherals #(
     `ifdef KINTEX7
     .InclSPI      ( 1'b1         ),
     .InclXilinxEthernet  ( 1'b1      ),
+    .InclXilinxDMA       ( 1'b1      ),
     .InclLowriscEthernet ( 1'b0      )
     `elsif KC705
     .InclSPI      ( 1'b1         ),
     .InclXilinxEthernet  ( 1'b0      ),
+    .InclXilinxDMA       ( 1'b0      ),
     .InclLowriscEthernet ( 1'b0      ) // Ethernet requires RAMB16 fpga/src/ariane-ethernet/dualmem_widen8.sv to be defined
     `elsif VC707
     .InclSPI      ( 1'b1         ),
     .InclXilinxEthernet  ( 1'b0      ),
+    .InclXilinxDMA       ( 1'b0      ),
     .InclLowriscEthernet ( 1'b0      )
     `elsif VCU118
     .InclSPI      ( 1'b0         ),
     .InclXilinxEthernet  ( 1'b0      ),
+    .InclXilinxDMA       ( 1'b0      ),
     .InclLowriscEthernet ( 1'b0      )
     `elsif NEXYS_VIDEO
     .InclSPI      ( 1'b1         ),
     .InclXilinxEthernet  ( 1'b0      ),
+    .InclXilinxDMA       ( 1'b0      ),
     .InclLowriscEthernet ( 1'b0      )
     `endif
 ) i_ariane_peripherals (
@@ -900,6 +905,8 @@ ariane_peripherals #(
     .ethernet_data ( master[ariane_soc::EthernetMgmt] ),
     .ethernet_mgmt ( master[ariane_soc::EthernetData] ),
     .timer        ( master[ariane_soc::Timer]    ),
+    .ethernet_dma_sg ( slave[2] ),
+    .ethernet_dma_mm2s ( slave[3] ),
     .irq_o        ( irq                          ),
     .rx_i         ( rx                           ),
     .tx_o         ( tx                           ),

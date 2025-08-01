@@ -39,6 +39,7 @@ read_ip { \
       "xilinx/xlnx_axi_ethernet/xlnx_axi_ethernet.srcs/sources_1/ip/xlnx_axi_ethernet/xlnx_axi_ethernet.xci" \
       "xilinx/xlnx_axi_lite_converter/xlnx_axi_lite_converter.srcs/sources_1/ip/xlnx_axi_lite_converter/xlnx_axi_lite_converter.xci" \
       "xilinx/xlnx_axi_fifo/xlnx_axi_fifo.srcs/sources_1/ip/xlnx_axi_fifo/xlnx_axi_fifo.xci" \
+      "xilinx/xlnx_axi_dma/xlnx_axi_dma.srcs/sources_1/ip/xlnx_axi_dma/xlnx_axi_dma.xci" \
       "xilinx/xlnx_clk_gen/xlnx_clk_gen.srcs/sources_1/ip/xlnx_clk_gen/xlnx_clk_gen.xci" \
 }
 # read_ip xilinx/xlnx_protocol_checker/ip/xlnx_protocol_checker.xci
